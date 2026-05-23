@@ -4,11 +4,15 @@ import { z } from "zod";
 // Primitive building blocks
 // ---------------------------------------------------------------------------
 
-// Book price and quantity: Kraken WS v2 sends both as float64 numbers over
-// the wire. Do NOT use z.string() here — that was pre-v2 Kraken behavior.
+// Book price and quantity: Kraken WS v2 sends both as JSON numbers but with
+// significant trailing zeros (e.g. "0.00005100", "0.19900000") that are required
+// for checksum computation. JSON.parse discards trailing zeros when converting to
+// float64, so we intercept BEFORE standard parsing using a reviver in KrakenClient
+// and validate the raw strings here. z.string() is intentional — the reviver
+// ensures these arrive as strings preserving the wire precision.
 const bookEntrySchema = z.object({
-  price: z.number(),
-  qty: z.number(),
+  price: z.string(),
+  qty: z.string(),
 });
 
 export type BookEntry = z.infer<typeof bookEntrySchema>;
@@ -105,15 +109,54 @@ export const unsubscribeAckSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// OHLC channel messages
+// ---------------------------------------------------------------------------
+
+const ohlcDataSchema = z.object({
+  symbol: z.string(),
+  open: z.string(),
+  high: z.string(),
+  low: z.string(),
+  close: z.string(),
+  volume: z.string(),
+  vwap: z.string(),
+  trades: z.number(),
+  interval_begin: z.string(),
+  interval: z.number(),
+  timestamp: z.string(),
+});
+
+export const ohlcMessageSchema = z.object({
+  channel: z.literal("ohlc"),
+  type: z.union([z.literal("snapshot"), z.literal("update")]),
+  data: z.array(ohlcDataSchema),
+});
+
+export type OhlcMessage = z.infer<typeof ohlcMessageSchema>;
+export type OhlcData = z.infer<typeof ohlcDataSchema>;
+
+// ---------------------------------------------------------------------------
 // Composite discriminated unions
 // ---------------------------------------------------------------------------
 
-// Channel messages share the `channel` discriminant.
-const channelMessageSchema = z.discriminatedUnion("channel", [
+// Zod v4 requires unique discriminant values. Both book variants share
+// channel: "book", so they are pre-discriminated on `type` before the
+// outer channel union is constructed — preserving O(1) dispatch on the hot path.
+const bookChannelSchema = z.discriminatedUnion("type", [
   bookSnapshotSchema,
   bookUpdateSchema,
-  heartbeatSchema,
-  statusSchema,
+]);
+
+// ohlc also discriminates on `type`, combined with book via plain union before
+// the outer channel discriminated union is built.
+const ohlcChannelSchema = z.discriminatedUnion("type", [
+  ohlcMessageSchema,
+]);
+
+const channelMessageSchema = z.union([
+  bookChannelSchema,
+  ohlcChannelSchema,
+  z.discriminatedUnion("channel", [heartbeatSchema, statusSchema]),
 ]);
 
 // Method messages share the `method` discriminant (no `channel` field present).

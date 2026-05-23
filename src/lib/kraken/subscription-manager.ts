@@ -7,6 +7,7 @@ interface ChannelDescriptor {
   channel: string;
   symbol: string;
   depth?: number;
+  interval?: number;
 }
 
 type SubscriptionPhase = 'subscribing' | 'subscribed' | 'unsubscribing';
@@ -18,22 +19,24 @@ interface ManagedSubscription {
 }
 
 function keyOf(d: ChannelDescriptor): ChannelKey {
-  return `${d.channel}:${d.symbol}:${d.depth ?? 'default'}`;
+  return `${d.channel}:${d.symbol}:${d.depth ?? 'default'}:${d.interval ?? 'default'}`;
 }
 
 export class SubscriptionManager {
   private readonly subscriptions = new Map<ChannelKey, ManagedSubscription>();
   private lastOpenAt = 0;
+  private readonly unsubscribeStateChange: () => void;
+  private readonly unsubscribeMessage: () => void;
 
   constructor(private readonly client: KrakenClient) {
-    this.client.onConnectionStateChange((state) => {
+    this.unsubscribeStateChange = this.client.onConnectionStateChange((state) => {
       if (state.status === 'open' && state.since > this.lastOpenAt) {
         this.lastOpenAt = state.since;
         this.resubscribeAll();
       }
     });
 
-    this.client.onMessage((msg: KrakenMessage) => {
+    this.unsubscribeMessage = this.client.onMessage((msg: KrakenMessage) => {
       if (!('method' in msg)) return;
 
       if (msg.method === 'subscribe') {
@@ -61,6 +64,11 @@ export class SubscriptionManager {
     });
   }
 
+  destroy(): void {
+    this.unsubscribeStateChange();
+    this.unsubscribeMessage();
+  }
+
   subscribe(descriptor: ChannelDescriptor): () => void {
     const key = keyOf(descriptor);
     const existing = this.subscriptions.get(key);
@@ -81,6 +89,7 @@ export class SubscriptionManager {
         channel: descriptor.channel,
         symbol: [descriptor.symbol],
         ...(descriptor.depth !== undefined ? { depth: descriptor.depth } : {}),
+        ...(descriptor.interval !== undefined ? { interval: descriptor.interval } : {}),
       });
     }
 
@@ -107,15 +116,21 @@ export class SubscriptionManager {
     this.subscriptions.delete(key);
   }
 
-  // One batched subscribe frame per (channel, depth) group avoids sending N
-  // individual frames when resubscribing after a reconnect.
+  // One batched subscribe frame per (channel, depth, interval) group avoids
+  // sending N individual frames when resubscribing after a reconnect.
+  // interval is included in the group key because Kraken's ohlc channel takes
+  // a single interval per subscribe frame — two symbols with different intervals
+  // cannot be batched into the same frame.
   resubscribeAll(): void {
     type GroupKey = string;
-    const groups = new Map<GroupKey, { channel: string; depth?: number; symbols: string[] }>();
+    const groups = new Map<
+      GroupKey,
+      { channel: string; depth?: number; interval?: number; symbols: string[] }
+    >();
 
     for (const [, sub] of this.subscriptions) {
-      const { channel, symbol, depth } = sub.descriptor;
-      const groupKey: GroupKey = `${channel}:${depth ?? 'default'}`;
+      const { channel, symbol, depth, interval } = sub.descriptor;
+      const groupKey: GroupKey = `${channel}:${depth ?? 'default'}:${interval ?? 'default'}`;
       const existing = groups.get(groupKey);
 
       if (existing !== undefined) {
@@ -124,6 +139,7 @@ export class SubscriptionManager {
         groups.set(groupKey, {
           channel,
           ...(depth !== undefined ? { depth } : {}),
+          ...(interval !== undefined ? { interval } : {}),
           symbols: [symbol],
         });
       }
@@ -136,6 +152,7 @@ export class SubscriptionManager {
         channel: group.channel,
         symbol: group.symbols,
         ...(group.depth !== undefined ? { depth: group.depth } : {}),
+        ...(group.interval !== undefined ? { interval: group.interval } : {}),
       });
     }
   }

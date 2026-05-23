@@ -89,3 +89,121 @@ Group entries under phase headings (`## Phase 2a — Order Book Data`). New phas
 - **What AI got wrong:** Nothing notable — the 3 issues were self-identified and self-corrected during implementation.
 - **Human correction:** Accepted as-is.
 - **Files touched:** `src/lib/kraken/client.ts`, `src/lib/kraken/subscription-manager.ts`, `src/lib/kraken/index.ts`, `src/lib/kraken/use-channel.ts`
+
+## Phase 2a — Order Book Data
+
+### 2026-05-23 — Resync path architecture review
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Determine which layer should call resubscribe when an order book checksum fails, and how state flows across the WS/store/provider boundary.
+- **What AI got right:** Evaluated 4 concrete options (A: store imports SubscriptionManager directly; B: injected callback; C: checksumFailures map + React watches; D: provider watches a store status field) and correctly identified that Option D — store exposes `checksumStatus: Map<string, 'ok' | 'failed' | 'resyncing'>` per symbol, provider watches it via selector and calls unsubscribe+subscribe on `'failed'`, store transitions to `'resyncing'` to block stale delta application — is the cleanest layer separation. Correctly flagged that `'resyncing'` must block delta application in the store to prevent stale data from landing between the unsubscribe and the new snapshot.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted Option D. Added one requirement: `'resyncing'` must surface in the UI as a visible "syncing" indicator, because trading UIs deal with money and users must know when data accuracy is momentarily compromised.
+- **Files touched:** none (architecture review only)
+
+### 2026-05-23 — Price precision + checksum format pre-implementation review
+
+- **Agent:** trading-domain-engineer (sonnet)
+- **Task:** Answer three design questions before implementation: (1) should `Level.price`/`qty` be `Decimal` or `number`; (2) is `===` safe for price comparison; (3) is the roadmap's `formatForChecksum` correct?
+- **What AI got right:** All three answers were correct and well-reasoned. (1) `Decimal` is required — CLAUDE.md mandates it and `Decimal.toFixed()` is also needed for correct checksum string formatting. (2) `===` is not safe for `Decimal` objects; `Decimal.equals()` is required. (3) Correctly identified that the roadmap's `String(n)` produces `"1e-5"` for small quantities and `"5"` for `50000`, both wrong for the Kraken CRC32 format. Prescribed the correct algorithm: `Decimal.toFixed()` + split on `.` + strip trailing fractional zeros + strip leading zeros on the integer part.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted all three answers as-is.
+- **Files touched:** none (design review only)
+
+### 2026-05-23 — OrderBook class and checksum implementation
+
+- **Agent:** trading-domain-engineer (sonnet)
+- **Task:** Implement `OrderBook` class (sorted levels, snapshot/update, spread) and `formatForChecksum`/`computeBookChecksum` in `checksum.ts`.
+- **What AI got right:** Produced both files in a single pass with zero typecheck errors. `toLevel` is the single Decimal conversion boundary from wire `number` — no `number` arithmetic leaks into the book. `applyToSide` uses `Decimal.equals()` for price lookup and `Decimal.lessThan/greaterThan` for sorted insert. `topChanged` correctly handles nullity transitions (empty-to-non-empty book) so snapshot vs. delta updates both trigger re-renders correctly. `formatForChecksum` implements the correct algorithm — `toFixed()` + split on dot + strip trailing fractional zeros + strip leading integer zeros — handling scientific notation correctly. `getSpread()` returns `Decimal | null` (not `number`), matching the DECISIONS.md entry.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Typecheck confirmed clean by orchestrator (`pnpm typecheck` zero errors).
+- **Files touched:** `src/lib/orderbook/orderbook.ts`, `src/lib/orderbook/checksum.ts`
+
+### 2026-05-23 — Zustand store and OrderBookProvider implementation
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Implement `orderbook-store.ts` (Zustand with `books`, `lastUpdateAt`, `checksumStatus` maps) and `OrderBookProvider.tsx` (resync effect, message piping, context).
+- **What AI got right:** Store correctly implements the three-state `checksumStatus` machine (`'ok'` → `'failed'` → `'resyncing'` → `'ok'`) per symbol. `applySnapshot` resets status to `'ok'`. `applyUpdate` drops deltas when status is `'resyncing'` and sets `'failed'` on checksum mismatch. `useOrderBookStatus` selector hook is provided. Provider has `'use client'` directive, uses `useChannelSubscription` for lifecycle, pipes messages through `toLevel`, and the resync effect watches `checksumStatus === 'failed'` to call unsubscribe then subscribe on the SubscriptionManager. `OrderBookStatusContext` and `useOrderBookSyncStatus` hook expose resync state to children. Agent self-corrected three issues during implementation without prompting: (1) roadmap's provider passed raw `BookEntry[]` directly to the store, bypassing `toLevel` — fixed by piping through the adapter; (2) roadmap's provider had no null guard on `getKrakenClient()` — fixed with a null check before subscription; (3) a self-import artifact was removed before typecheck.
+- **What AI got wrong:** Nothing notable — the three self-corrections were caught and fixed before submission, not post-review failures.
+- **Human correction:** Accepted as-is. Typecheck confirmed clean independently by orchestrator (`pnpm typecheck` zero errors).
+- **Files touched:** `src/stores/orderbook-store.ts`, `src/components/OrderBookProvider.tsx`
+
+## Phase 2b — Order Book Rendering
+
+### 2026-05-23 — Phase 2b pre-implementation design
+
+- **Agent:** react-performance-engineer (sonnet)
+- **Task:** Answer 4 design questions on row prop types, selector churn, flash animation with Decimal, and rAF batching before any code was written.
+- **What AI got right:** All 4 questions resolved correctly without needing human input. (1) Recommended Option C — `selectLevelDisplay` returns `{ priceStr: string, qtyStr: string, depthPct: number }` with `Decimal.toFixed()` called inside the selector, making the selector the display boundary and allowing `memo`'s default `===` to work on strings. Correctly identified that roadmap Step 5's `price: number` violates CLAUDE.md's money math rules. (2) Correctly noted that Zustand v5 does not re-subscribe on selector reference change, so `useMemo` on `selectLevelDisplay(...)` is a hygiene improvement only, not required for correctness. (3) Correctly identified that the string-prop decision from Q1 dissolves the Decimal flash comparison problem — `prevQtyStr.current !== display?.qtyStr` is correct string inequality, no Decimal comparison needed in Row. (4) Correctly deferred rAF batching — measured the hot path at 50 rows × 50 updates/sec as under 2ms/sec React work, and prescribed adding it only if 95th-percentile update-to-paint latency exceeds 12ms at realistic load.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted all 4 answers. Orchestrator added 2 entries to `DECISIONS.md`: "Order book rows receive pre-formatted strings, not Decimal or number" and "rAF batching deferred; instrument first."
+- **Files touched:** none (design review only)
+
+### 2026-05-23 — Phase 2b implementation
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Implement all Phase 2b files: perf marks, row selector, `BookRow`, `OrderBook` parent, CSS, and store exports.
+- **What AI got right:** Delivered all files in a single pass with zero typecheck errors. `marks.ts` implements `markUpdateReceived` and `markUpdateRendered` with a 16ms warn threshold. `selectors.ts` implements a `selectLevelDisplay` factory that returns pre-formatted strings with cumulative depth percentage, plus a `levelDisplayEqual` comparator. `BookRow.tsx` correctly uses `useStoreWithEqualityFn` from `zustand/traditional` (the Zustand v5 API), applies `useMemo` on the selector, and implements the flash animation imperatively via `classList` and a forced reflow — no state involved. `OrderBook.tsx` has the parent subscribing only to `lastUpdateAt` for the relevant symbol, renders asks in reverse index order (best ask nearest the spread), includes a `MarkRendered` internal component for perf marks, and shows a syncing indicator. `globals.css` correctly implements the depth bar using a `::before` pseudo-element and a `--depth-pct` CSS custom property, the flash keyframe animation, and the bid/ask color scheme. Agent self-caught 2 API mismatches at typecheck before reporting: (1) Zustand v5 removed the two-argument `useStore(selector, equalityFn)` overload — agent switched to `useStoreWithEqualityFn` from `zustand/traditional`; (2) `useOrderBookSyncStatus` takes no arguments (context is already symbol-scoped by the provider) — roadmap showed a `(symbol)` signature that does not match the existing implementation.
+- **What AI got wrong:** Nothing notable — both API mismatches were caught at typecheck during implementation and corrected before reporting.
+- **Human correction:** Accepted as-is. Typecheck confirmed clean (zero errors).
+- **Files touched:** `src/lib/perf/marks.ts`, `src/components/orderbook/selectors.ts`, `src/components/orderbook/BookRow.tsx`, `src/components/orderbook/OrderBook.tsx`, `src/stores/orderbook-store.ts`, `src/app/globals.css`
+
+## Bug Fixes
+
+### 2026-05-23 — Zod duplicate discriminator "book" crash
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Root cause and fix for console error "Duplicate discriminator value 'book'" thrown at schema module load time.
+- **What AI got right:** Correctly identified that Zod v4 requires unique discriminant values within a `discriminatedUnion`, and that both `bookSnapshotSchema` and `bookUpdateSchema` share `channel: z.literal("book")`, making them unrepresentable as peers in the same `z.discriminatedUnion("channel", [...])`. Evaluated three fix options and correctly recommended Option C — nest the two book variants in an inner `z.discriminatedUnion("type", [bookSnapshotSchema, bookUpdateSchema])` and replace the single flat channel union with `z.union([bookChannelSchema, z.discriminatedUnion("channel", [heartbeatSchema, statusSchema])])` — as the minimal change that preserves O(1) dispatch on the hot book path and leaves `krakenMessageSchema`, `client.ts`, and the inferred `KrakenMessage` type unchanged.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Fix was applied directly by the orchestrator as a targeted edit. Typecheck clean post-fix.
+- **Files touched:** `src/lib/kraken/schemas.ts`
+
+### 2026-05-23 — Checksum trailing-zero precision loss + UI frozen after snapshot
+
+- **Agent:** react-performance-engineer (sonnet)
+- **Task:** Diagnose why the order book UI froze after the initial snapshot and trace the exact failure path through checksum validation to Zustand subscription.
+- **What AI got right:** Correctly identified Hypothesis A (checksum always failing) as the root cause. Traced the exact `JSON.parse` trailing-zero loss — Kraken sends `"0.00005100"` on the wire; `JSON.parse` produces the float `0.000051`, discarding the trailing zeros. Correctly identified that Kraken's server-side checksum algorithm uses the raw wire string (`"0.00005100"` → `"5100"`), so the previous `Decimal.toFixed(d.decimalPlaces())` approach was architecturally wrong — it tried to recover precision from a float that had already lost it. Devised the correct fix: a regex pre-processing step on the raw wire string before `JSON.parse` to convert book entry numeric values to quoted strings, preserving the original wire representation. The complete chain was traced: checksum mismatch → `checksumStatus` flipped to `'failed'` → `'resyncing'` → `applyUpdate` dropped all deltas → `lastUpdateAt` never changed → Zustand subscription never fired → no re-renders.
+- **What AI got wrong:** The previous fix attempt (`toFixed(d.decimalPlaces())`) was architecturally wrong — it tried to recover precision from a float that had already discarded the trailing zeros. The correct fix is to never lose the wire string in the first place.
+- **Human correction:** Accepted the architectural direction. Verified 6/6 consecutive checksums passed against live Kraken WS v2. Added a `DECISIONS.md` entry: "Book price/qty parsed as strings to preserve wire precision for checksum."
+- **Files touched:** `src/lib/kraken/client.ts`, `src/lib/kraken/schemas.ts`, `src/lib/orderbook/orderbook.ts`, `src/lib/orderbook/checksum.ts`
+
+## Phase 4a — Order Matching & Simulation / Phase 4b — P&L & Decimal Precision
+
+### 2026-05-23 — Phase 4 math layer (4a + 4b combined)
+
+- **Agent:** trading-domain-engineer (sonnet)
+- **Task:** Implement Phases 4a + 4b math layer together with Decimal throughout: centralized Decimal config, domain types, market order simulation, position model, applyFillToPosition (all 3 cases), unrealizedPnl, chooseMarkPrice, trading store, positions store, useMarketOrderPreview hook, usePositionWithPnl hook, useLimitFillTrigger hook.
+- **What AI got right:** Zero typecheck errors on first pass. Correctly handled `exactOptionalPropertyTypes` constraint on `limitPrice?: Decimal`. Self-caught two bugs during reasoning before submitting: (1) positions with zero size but nonzero realizedPnl must be retained in the map, not deleted; (2) short P&L sign requires a branch on side — the naive formula produces the wrong sign for shorts. Skipped the roadmap's "use native numbers first, refactor in 4b" intermediate step, which was correct given Level already uses Decimal throughout.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Three roadmap deviations noted and accepted: (a) Decimal-throughout from the start (skipped 4a native-number intermediate); (b) `useLimitFillTrigger` subscribes per-symbol rather than globally — flagged as a limitation if multi-symbol trading is needed; (c) taker fee hardcoded at 26 bps in `useMarketOrderPreview`.
+- **Files touched:** `src/lib/money/decimal.ts`, `src/lib/trading/types.ts`, `src/lib/trading/simulate.ts`, `src/lib/trading/use-market-preview.ts`, `src/lib/trading/positions.ts`, `src/lib/trading/use-position-pnl.ts`, `src/lib/trading/use-limit-fill-trigger.ts`, `src/stores/trading-store.ts`, `src/stores/positions-store.ts`
+
+### 2026-05-23 — Phase 4 UI layer (4a + 4b combined)
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Build all Phase 4 UI components: OrderEntry form with market/limit tabs and slippage preview, OpenOrders table with cancel, FilledOrders table (last 20), PositionsPanel with row-level P&L subscriptions, TradingPanel composition. Wire into page.tsx.
+- **What AI got right:** Zero typecheck errors. Decimal never passed as a React prop — all Decimal-to-string conversions happen at the render boundary. `noUncheckedIndexedAccess` guard on `STATUS_CLASS` record in FilledOrders was caught and applied. Responsive two-column layout added to page.tsx.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. No deviations beyond what was already settled by the trading-domain-engineer delegation.
+- **Files touched:** `src/components/trading/PnlText.tsx`, `src/components/trading/MarketPreview.tsx`, `src/components/trading/OrderEntry.tsx`, `src/components/trading/OpenOrders.tsx`, `src/components/trading/FilledOrders.tsx`, `src/components/trading/PositionsPanel.tsx`, `src/components/trading/TradingPanel.tsx`, `src/app/page.tsx`
+
+## Phase 3 — Candlestick Charting
+
+### 2026-05-23 — Phase 3 architecture review
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Pre-implementation architecture review for Phase 3 candlestick charting — REST/WS race condition, store design, selector patterns, chart lifecycle, SubscriptionManager capability gaps.
+- **What AI got right:** Identified 6 design issues before any code was written. (1) Load token required on `applyHistorical` to guard against aborted-but-resolved fetch races — without it, a slow historical response arriving after a teardown could overwrite fresh data. (2) Zustand actions must be pulled via `getState()` inside the effect, not passed as reactive dependencies, to avoid stale-closure and unnecessary re-runs. (3) Array-returning selector causes subscription churn — prescribed version counter plus a materialized array reference held outside the selector so `===` comparisons remain stable. (4) Cache-with-freshness preferred over clear-on-teardown for interval switching — avoids a blank chart flash when switching back to a previously loaded interval. (5) Single-effect chart lifecycle to avoid ordering ambiguity between initialization and data-load effects. (6) Blocking find: `SubscriptionManager` key did not include `interval`, so ohlc subscriptions at different intervals would collide and the second subscribe would be no-oped. Also caught that the roadmap's `ohlc-1m` channel name is wrong — Kraken WS v2 uses `channel: "ohlc"` with `params.interval` as a numeric field.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** All findings accepted. Human approved SubscriptionManager refactor (no behavior change for non-ohlc channels), confirmed right-edge-only update scope, no visibility resync needed.
+- **Files touched:** none (design-only)
+
+### 2026-05-23 — Phase 3 implementation
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Full Phase 3 implementation: SubscriptionManager refactor, candle types/schemas, REST fetcher, Zustand candle store, `useCandles` hook, Chart component (lightweight-charts v5), ChartShell interval switcher, page wiring.
+- **What AI got right:** All 8 parts implemented in a single delegation with typecheck clean (0 errors). SubscriptionManager refactor added `interval` to `ChannelDescriptor`, `keyOf`, subscribe frame, and `resubscribeAll` without touching non-ohlc channel behavior. Candle schemas correctly separated REST OHLC response shape from the WS ohlc push shape. REST fetcher uses `AbortSignal` and a `toKrakenPair` normalizer. Candle store implements load token, version counter, materialized array reference, and a pending buffer that drains after `applyHistorical` resolves. `useCandles` uses a single effect with `getState()` for actions. Chart component uses a single imperative effect to subscribe to the store, and calls `setData` on historical load and `update` on live ticks. ChartShell renders the interval switcher and a load state indicator.
+- **What AI got wrong:** Nothing notable — the three roadmap deviations below were caught and resolved by the agent before reporting.
+- **Human correction:** Accepted as-is. Three roadmap deviations were surfaced and corrected during implementation: (1) `resubscribeAll` group record required an `interval` value to pass in the subscribe frame — roadmap omitted this field; (2) `useCandlesStore.subscribe(selector, listener)` two-arg form requires `subscribeWithSelector` middleware not present in the codebase — implemented listener-only with manual version-equality check instead; (3) `lightweight-charts` v5 API is `chart.addSeries(CandlestickSeries, options)`, not `chart.addCandlestickSeries()` — roadmap had the v4 API.
+- **Files touched:** `src/lib/kraken/client.ts`, `src/lib/kraken/subscription-manager.ts`, `src/lib/kraken/use-channel.ts`, `src/lib/kraken/schemas.ts`, `src/lib/candles/types.ts`, `src/lib/candles/schemas.ts`, `src/lib/candles/fetch-historical.ts`, `src/lib/candles/use-candles.ts`, `src/stores/candles-store.ts`, `src/components/chart/Chart.tsx`, `src/components/chart/ChartShell.tsx`, `src/app/page.tsx`

@@ -24,3 +24,67 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Order book layout */
+.order-book {
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+.order-book-syncing {
+  text-align: center;
+  color: #f59e0b;
+  font-size: 0.7rem;
+  padding: 2px 0;
+}
+
+.order-book-spread {
+  text-align: center;
+  color: #9ca3af;
+  padding: 4px 0;
+  border-top: 1px solid #374151;
+  border-bottom: 1px solid #374151;
+  margin: 2px 0;
+}
+
+.book-row {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 4px;
+  overflow: hidden;
+}
+
+.book-row-empty {
+  height: 1.25rem;
+}
+
+/* Depth bar via ::before pseudo-element */
+.book-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--depth-pct, 0) * 100%);
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.book-row-bid::before { background: #22c55e; right: 0; }
+.book-row-ask::before { background: #ef4444; left: 0; }
+
+.book-row-bid .book-row-price { color: #22c55e; }
+.book-row-ask .book-row-price { color: #ef4444; }
+
+.book-row-qty { color: #d1d5db; }
+
+/* Flash animation — imperative, no React state */
+@keyframes book-row-flash {
+  0%   { background-color: rgba(250, 204, 21, 0.35); }
+  100% { background-color: transparent; }
+}
+
+.book-row-flash {
+  animation: book-row-flash 250ms ease-out forwards;
+}

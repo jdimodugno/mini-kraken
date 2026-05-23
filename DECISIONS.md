@@ -215,3 +215,159 @@ The UI must surface `degraded` state visibly (banner, status indicator). Silent 
 **Trade-offs accepted:** Any in-flight subscribe requests queued before `disconnect()` are lost. Acceptable: `KrakenClient` (Phase 1b) resubscribes to all active channels on every fresh connect anyway.
 
 **What would change my mind:** A use case where buffered messages before a planned disconnect are safe and desirable to replay.
+
+---
+
+## Decision: Order book rows receive pre-formatted strings, not Decimal or number
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** `React.memo` on rows requires primitive or stable-reference props to bail out. `Decimal` objects are never reference-equal. Roadmap Step 5 suggested passing `price: number, qty: number` — this violates CLAUDE.md (number is only allowed at the display boundary, not before it). Passing `Decimal` requires a custom `arePropsEqual` using `.equals()`.
+
+**Alternatives considered:**
+- `price: Decimal, qty: Decimal` + custom `arePropsEqual(.equals())` — correct but 1000 `.equals()` calls/sec at 50 rows × 20 updates/sec; unnecessary allocation
+- `price: number, qty: number` (roadmap Step 5) — violates CLAUDE.md; wrong display boundary
+- `price: string, qty: string` pre-formatted in `selectLevel` — memo's default `===` works; selector IS the display boundary; Row is pure display with no Decimal dependency
+
+**Choice:** `selectLevel` returns `{ priceStr: string; qtyStr: string } | null`. The selector is the display boundary where `Decimal.toFixed()` is called. Row receives strings, uses Zustand custom equality function `(a, b) => a?.priceStr === b?.priceStr && a?.qtyStr === b?.qtyStr`.
+
+**Why:** Satisfies CLAUDE.md, makes `memo` work correctly, dissolves the flash-comparison Decimal problem (string `!==` detects qty changes correctly), and eliminates the custom `arePropsEqual` complexity.
+
+**Trade-offs accepted:** Formatting happens in the selector (on every store update per row), not in render. Net allocation cost is identical; no correctness tradeoff.
+
+**What would change my mind:** A requirement for dynamically changing price decimal precision (e.g., different symbols have different tick sizes). Would need to parameterize the `toFixed` call — still possible with strings.
+
+---
+
+## Decision: rAF batching deferred; instrument first
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** Roadmap Step 9 describes coalescing store updates via `requestAnimationFrame` for extreme load. With row-level subscriptions at 20–50 updates/sec, each store update only re-renders the rows that changed.
+
+**Choice:** Do not implement rAF batching in Phase 2b. Add `performance.mark` instrumentation. Revisit only if 95th-percentile update-to-paint latency exceeds 12ms at realistic load.
+
+**Why:** At 50 rows and 50 updates/sec, React work stays well under 2ms/sec — 16ms frame budget is entirely clear. rAF batching adds up to 16ms latency (visible jank in fast markets) and complex partial-update merging bugs. The decision criterion is measurable, not speculative.
+
+**Trade-offs accepted:** If Kraken sends 150+ updates/sec during a market spike, frames may drop. Acceptable: instrument first, add batching only when measured.
+
+**What would change my mind:** Profiler showing 95th-percentile latency > 12ms at realistic (50/sec) load.
+
+---
+
+## Decision: Book price/qty parsed as strings to preserve wire precision for checksum
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** Kraken WS v2 sends book quantities with significant trailing zeros (e.g. `0.00005100`, `0.19900000`). Their server-side checksum algorithm operates on the raw decimal string before JSON encoding — `"0.00005100"` → strip decimal → strip leading zeros → `"5100"`. `JSON.parse` converts `0.00005100` to the IEEE 754 float `0.000051`, discarding the trailing zeros. Our checksum then produced `"51"` instead of `"5100"`. Every checksum failed → `lastUpdateAt` never updated → UI never re-rendered after initial snapshot.
+
+**Fix:** In `KrakenClient.handleRawFrame`, a regex transform (`quoteBookEntryNumbers`) is applied to the raw wire string BEFORE `JSON.parse`. It quotes the string values of `"price"` and `"qty"` keys so they survive parsing as strings. `bookEntrySchema` uses `z.string()` for price and qty. `Level` carries `rawPrice: string` and `rawQty: string`. `computeBookChecksum` uses `formatRaw(rawStr)` directly on the wire string — no Decimal involved.
+
+**Why:** The checksum algorithm is defined over the wire string, not over the numeric value. Any conversion through float64 is lossy for this purpose.
+
+**Trade-offs accepted:** `KrakenClient` now has a preprocessing step that couples it to Kraken's specific book schema structure (it knows which JSON keys to quote). Acceptable — `KrakenClient` is already Kraken-specific.
+
+**What would change my mind:** Kraken changing their checksum algorithm to operate on numeric values rather than raw strings.
+
+---
+
+## Decision: Book channel uses nested discriminated union on `type`
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** Zod v4 enforces unique discriminant values within `z.discriminatedUnion`. Both `bookSnapshotSchema` and `bookUpdateSchema` have `channel: z.literal("book")`, causing a runtime "Duplicate discriminator value 'book'" error on module load.
+
+**Alternatives considered:**
+- Plain `z.union` for all channel messages — correct but loses O(1) discriminated dispatch on the book hot path
+- Two-level nested `z.discriminatedUnion` — doesn't compose in Zod v4 (inner discriminated union is not a `ZodObject` member)
+- `bookChannelSchema = z.discriminatedUnion("type", [...])` + outer `z.union([bookChannelSchema, z.discriminatedUnion("channel", [...])])` — correct and preserves O(1) dispatch within each branch
+
+**Choice:** Option C. `bookChannelSchema` discriminates snapshot vs update on `type`. Outer `channelMessageSchema` is `z.union([bookChannelSchema, z.discriminatedUnion("channel", [heartbeatSchema, statusSchema])])`.
+
+**Why:** `KrakenMessage` inferred type unchanged. `client.ts` requires zero changes. Hot-path book frames pay one extra union-level check then hit O(1) discriminated dispatch by `type`.
+
+**Trade-offs accepted:** Heartbeat and status frames pay one extra `z.union` try-each before reaching their discriminated branch. Negligible at their frequency.
+
+**What would change my mind:** A Zod v4 API update allowing composite discriminant keys.
+
+---
+
+## Decision: OrderBook prices and quantities use Decimal, not number
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** CLAUDE.md mandates `decimal.js` for all prices. The roadmap used `number` for `Level.price` and `Level.qty`. Kraken WS v2 sends both as JSON float64.
+
+**Alternatives considered:**
+- `number` (roadmap) — violates CLAUDE.md; float `===` comparison works for lookup but breaks the moment arithmetic is added; `String(n)` for checksum produces scientific notation on small values and drops significant trailing zeros on integers
+- `Decimal` — satisfies CLAUDE.md; `price.equals(delta.price)` for lookup; `toFixed()` for checksum formatting handles all edge cases correctly
+
+**Choice:** `Level` holds `price: Decimal` and `qty: Decimal`. Conversion from wire `number` happens once, immediately after Zod `safeParse`, in a `toLevel(entry: BookEntry): Level` adapter.
+
+**Why:** CLAUDE.md is explicit. The checksum formatter requires exact decimal string representation which `Decimal.toFixed()` provides natively. Float-based `String(n)` is demonstrably broken for prices like `50000` (produces `"5"`) and quantities like `0.00001` (produces `"1e-5"`).
+
+**Trade-offs accepted:** Sort comparators and lookups require `Decimal.compare()` / `.equals()` instead of `<`/`>`. Minor ergonomic cost; negligible perf impact at depth ≤ 25.
+
+**What would change my mind:** A depth-1000 book updating at 100/sec where Decimal allocation becomes measurable on the hot path. At that point, normalized integer keys (price × 10^8) would be the right move.
+
+---
+
+## Decision: `getSpread()` returns `Decimal | null`
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** The roadmap defined `getSpread(): number | null`. With `Decimal` prices, returning `number` would require converting back across the display boundary inside a domain class — wrong direction.
+
+**Choice:** `getSpread(): Decimal | null`. Display components call `.toFixed(2)` or similar.
+
+**Why:** Keeps arithmetic in Decimal until the display boundary. Consistent with CLAUDE.md.
+
+**Trade-offs accepted:** UI components must call `.toFixed()`. This is the correct place for that conversion.
+
+**What would change my mind:** Nothing in this design; this is the canonical CLAUDE.md pattern.
+
+---
+
+## Decision: Checksum failure resync is provider-driven via store status field
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** On CRC32 mismatch, the order book must resubscribe to get a fresh snapshot. The Zustand store should not import `SubscriptionManager` (domain store coupling to transport).
+
+**Alternatives considered:**
+- Store imports `getSubscriptionManager()` directly — import cycle risk; store untestable in isolation
+- Callback injected at store construction — awkward with Zustand's functional API
+- `checksumFailures` map in state, React component watches it — noisy; map accumulation bugs
+- Provider component watches `checksumStatus` field per symbol, calls `subscriptionManager.resubscribe()` on `'failed'` — co-located with subscription lifecycle, unidirectional flow preserved
+
+**Choice:** Option D. Store exposes `checksumStatus: Map<string, 'ok' | 'failed' | 'resyncing'>`. `OrderBookProvider` watches the status for its symbol; on `'failed'` it calls `subscriptionManager.unsubscribe()` + `subscribe()` and transitions store to `'resyncing'`. Store drops deltas while `'resyncing'`. Fresh snapshot resets to `'ok'`.
+
+**Why:** The component that owns the subscription owns its recovery. Store stays pure domain state with no transport imports.
+
+**Trade-offs accepted:** One React render cycle between checksum failure and resync trigger. Negligible — resync takes a network round-trip regardless.
+
+**What would change my mind:** Multiple providers watching the same symbol simultaneously, causing competing resync calls. Handled by `'resyncing'` guard blocking re-entry.
+
+---
+
+## Decision: Resync state surfaces in UI as "syncing" indicator
+
+**Date:** 2026-05-23
+**Status:** accepted
+
+**Context:** During a resync, the order book data is known-stale. Options: show nothing (silent snap-back), hide the book, or show a visible indicator.
+
+**Choice:** Surface `'resyncing'` visibly — a "syncing…" label or dimmed state on the order book. UX priority: users interacting with live prices must know when data accuracy is temporarily compromised.
+
+**Why:** Trading UIs handle money. User anxiety on stale/uncertain data is a real risk. A brief visible indicator is cheaper than the cost of a user acting on stale prices.
+
+**Trade-offs accepted:** Minor visual noise on the rare checksum failure + resync path. Worth it.
+
+**What would change my mind:** User research showing the indicator causes more confusion than it prevents.

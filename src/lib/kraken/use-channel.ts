@@ -7,12 +7,16 @@ export function useChannelSubscription(
   channel: string,
   symbol: string,
   depth?: number,
+  interval?: number,
 ): void {
   useEffect(() => {
-    const descriptor = depth !== undefined
-      ? { channel, symbol, depth }
-      : { channel, symbol };
+    const descriptor = {
+      channel,
+      symbol,
+      ...(depth !== undefined ? { depth } : {}),
+      ...(interval !== undefined ? { interval } : {}),
+    };
     const unsubscribe = getSubscriptionManager()?.subscribe(descriptor);
     return () => unsubscribe?.();
-  }, [channel, symbol, depth]);
+  }, [channel, symbol, depth, interval]);
 }

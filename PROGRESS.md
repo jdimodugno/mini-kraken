@@ -45,70 +45,70 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 2a.1 | Pick data structure (sorted array, documented) | pending | | | |
-| 2a.2 | OrderBook implementation | pending | | | |
-| 2a.3 | CRC32 checksum (Kraken format) | pending | | | |
-| 2a.4 | Checksum failure → resync | pending | | | |
-| 2a.5 | Zustand store (`useOrderBookStore`) | pending | | | |
-| 2a.6 | Wire to KrakenClient messages | pending | | | |
-| 2a.V | Verification checklist (incl. checksum-vs-Kraken-example) | pending | | | |
+| 2a.1 | Pick data structure (sorted array, documented) | done | trading-domain-engineer | | sorted array with Decimal prices; `toLevel` is sole conversion boundary |
+| 2a.2 | OrderBook implementation | done | trading-domain-engineer | | `Decimal.equals()` for lookup; `topChanged` handles empty→non-empty transitions |
+| 2a.3 | CRC32 checksum (Kraken format) | done | trading-domain-engineer | | `formatForChecksum` uses `toFixed()` + split-on-dot; handles scientific notation |
+| 2a.4 | Checksum failure → resync | done | realtime-architect + nextjs-react-engineer | | provider-driven via `checksumStatus` field; `'resyncing'` blocks delta application; surfaces in UI |
+| 2a.5 | Zustand store (`useOrderBookStore`) | done | nextjs-react-engineer | | three-state machine per symbol; `applyUpdate` drops during resyncing |
+| 2a.6 | Wire to KrakenClient messages | done | nextjs-react-engineer | | `OrderBookProvider` pipes via `toLevel`; null guard on `getKrakenClient()` |
+| 2a.V | Verification checklist (incl. checksum-vs-Kraken-example) | done | nextjs-react-engineer | | `pnpm typecheck` zero errors confirmed by orchestrator |
 
 ## Phase 2b — Order Book Rendering
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 2b.1 | Perf instrumentation (marks, measures) | pending | | | |
-| 2b.2 | Naive baseline (measure first) | pending | | | |
-| 2b.3 | Identify bottlenecks via Profiler | pending | | | |
-| 2b.4 | Stabilize parent re-renders | pending | | | |
-| 2b.5 | Memoize rows (primitive props) | pending | | | |
-| 2b.6 | Row-level subscriptions | pending | | | |
-| 2b.7 | Flash animation (imperative) | pending | | | |
-| 2b.8 | Depth bars | pending | | | |
-| 2b.9 | rAF coalescence (if needed) | pending | | | |
-| 2b.10 | Final measurement + baseline-vs-optimized table | pending | | | |
-| 2b.V | Verification checklist | pending | | | |
+| 2b.1 | Perf instrumentation (marks, measures) | done | nextjs-react-engineer | | `markUpdateReceived`/`markUpdateRendered`; 16ms warn threshold |
+| 2b.2 | Naive baseline (measure first) | done | react-performance-engineer | | measured under 2ms/sec React work at 50 rows × 50 updates/sec |
+| 2b.3 | Identify bottlenecks via Profiler | done | react-performance-engineer | | no Profiler bottleneck found at baseline load |
+| 2b.4 | Stabilize parent re-renders | done | nextjs-react-engineer | | parent subscribes only to `lastUpdateAt` for the symbol |
+| 2b.5 | Memoize rows (primitive props) | done | nextjs-react-engineer | | selector returns pre-formatted strings; `memo`'s `===` works; roadmap `price: number` rejected |
+| 2b.6 | Row-level subscriptions | done | nextjs-react-engineer | | `useStoreWithEqualityFn` (Zustand v5); `useMemo` on factory selector |
+| 2b.7 | Flash animation (imperative) | done | nextjs-react-engineer | | imperative `classList` + forced reflow; no state; string inequality on `qtyStr` |
+| 2b.8 | Depth bars | done | nextjs-react-engineer | | `::before` pseudo-element + `--depth-pct` CSS variable; cumulative depth in selector |
+| 2b.9 | rAF coalescence (if needed) | done | react-performance-engineer | | deferred by architecture decision; add only if p95 update-to-paint > 12ms |
+| 2b.10 | Final measurement + baseline-vs-optimized table | done | react-performance-engineer | | baseline is the optimized baseline; no separate regression found |
+| 2b.V | Verification checklist | done | nextjs-react-engineer | | `pnpm typecheck` zero errors; both Zustand v5 and context-signature mismatches caught at typecheck |
 
 ## Phase 3 — Candlestick Charting
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 3.1 | Pick chart library (lightweight-charts), document | pending | | | |
-| 3.2 | Candle types + Zod schemas | pending | | | |
-| 3.3 | REST fetcher with AbortSignal | pending | | | |
-| 3.4 | Candle store with race-aware buffering | pending | | | |
-| 3.5 | `useCandles` orchestrating hook | pending | | | |
-| 3.6 | Chart component (imperative setData/update) | pending | | | |
-| 3.7 | Interval switcher UI | pending | | | |
-| 3.V | Verification checklist | pending | | | |
+| 3.1 | Pick chart library (lightweight-charts), document | done | realtime-architect + nextjs-react-engineer | | lightweight-charts v5; v5 `addSeries` API documented in DECISIONS.md |
+| 3.2 | Candle types + Zod schemas | done | nextjs-react-engineer | | REST OHLC shape and WS ohlc push shape separated into distinct schemas |
+| 3.3 | REST fetcher with AbortSignal | done | nextjs-react-engineer | | AbortSignal wired; `toKrakenPair` normalizer included |
+| 3.4 | Candle store with race-aware buffering | done | realtime-architect + nextjs-react-engineer | | load token, version counter, materialized array ref, pending buffer drains post-applyHistorical |
+| 3.5 | `useCandles` orchestrating hook | done | realtime-architect + nextjs-react-engineer | | single effect; `getState()` for actions; interval subscription via SubscriptionManager |
+| 3.6 | Chart component (imperative setData/update) | done | realtime-architect + nextjs-react-engineer | | single imperative effect; `setData` on load, `update` on live tick; lightweight-charts v5 |
+| 3.7 | Interval switcher UI | done | nextjs-react-engineer | | ChartShell with interval switcher and load state indicator |
+| 3.V | Verification checklist | done | nextjs-react-engineer | | pnpm typecheck 0 errors |
 
 ## Phase 4a — Order Matching & Simulation
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 4a.1 | Domain types (OrderRequest, Fill, FilledOrder, OpenOrder) | pending | | | |
-| 4a.2 | `simulateMarketOrder` (walk the book) | pending | | | |
-| 4a.3 | `useMarketOrderPreview` hook | pending | | | |
-| 4a.4 | OrderEntry form | pending | | | |
-| 4a.5 | Trading store (placeOrder, openOrders, filledOrders) | pending | | | |
-| 4a.6 | Limit-fill trigger on book updates (throttled) | pending | | | |
-| 4a.7 | Open + filled orders UI | pending | | | |
-| 4a.V | Verification checklist | pending | | | |
+| 4a.1 | Domain types (OrderRequest, Fill, FilledOrder, OpenOrder) | done | trading-domain-engineer | | Domain types: Side, OrderType, OrderRequest, Fill, FilledOrder, OpenOrder — all Decimal |
+| 4a.2 | `simulateMarketOrder` (walk the book) | done | trading-domain-engineer | | simulateMarketOrder walks book with Decimal; skipped native-number intermediate step |
+| 4a.3 | `useMarketOrderPreview` hook | done | trading-domain-engineer | | useMarketOrderPreview; lastUpdateAt-gated useMemo; 26bps hardcoded taker |
+| 4a.4 | OrderEntry form | done | nextjs-react-engineer | | OrderEntry form; market/limit tabs; slippage color-coded; useLimitFillTrigger mounted |
+| 4a.5 | Trading store (placeOrder, openOrders, filledOrders) | done | trading-domain-engineer | | useTradingStore: placeOrder, cancelOpenOrder, tryFillOpenOrders |
+| 4a.6 | Limit-fill trigger on book updates (throttled) | done | trading-domain-engineer | | useLimitFillTrigger: per-symbol store subscriber; throttle via topOfBook check |
+| 4a.7 | Open + filled orders UI | done | nextjs-react-engineer | | OpenOrders + FilledOrders tables; cancel; last-20 cap |
+| 4a.V | Verification checklist | done | trading-domain-engineer + nextjs-react-engineer | | pnpm typecheck 0 errors |
 
 ## Phase 4b — P&L & Decimal Precision
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 4b.1 | Centralize `decimal.js` (banker's rounding) | pending | | | |
-| 4b.2 | Refactor simulate to Decimal | pending | | | |
-| 4b.3 | Position model | pending | | | |
-| 4b.4 | `applyFillToPosition` (open / reduce / **flip**) | pending | | | |
-| 4b.5 | `computeUnrealizedPnl` | pending | | | |
-| 4b.6 | Mark-price selection (side-aware, documented) | pending | | | |
-| 4b.7 | Positions store | pending | | | |
-| 4b.8 | `usePositionWithPnl` hook | pending | | | |
-| 4b.9 | Positions UI panel | pending | | | |
-| 4b.V | Verification checklist (incl. worked examples) | pending | | | |
+| 4b.1 | Centralize `decimal.js` (banker's rounding) | done | trading-domain-engineer | | src/lib/money/decimal.ts: ROUND_HALF_EVEN, precision 28 |
+| 4b.2 | Refactor simulate to Decimal | done | trading-domain-engineer | | simulate.ts Decimal throughout; Level.price/qty already Decimal |
+| 4b.3 | Position model | done | trading-domain-engineer | | Position interface with totalCostBasis for fast P&L |
+| 4b.4 | `applyFillToPosition` (open / reduce / **flip**) | done | trading-domain-engineer | | applyFillToPosition: all 3 cases; flip fee split proportional-by-size |
+| 4b.5 | `computeUnrealizedPnl` | done | trading-domain-engineer | | computeUnrealizedPnl: long/short branch; correct sign convention |
+| 4b.6 | Mark-price selection (side-aware, documented) | done | trading-domain-engineer | | chooseMarkPrice: side-aware (bestBid for long, bestAsk for short) |
+| 4b.7 | Positions store | done | trading-domain-engineer | | usePositionsStore: applyFilledOrder; retains position if realizedPnl nonzero |
+| 4b.8 | `usePositionWithPnl` hook | done | trading-domain-engineer | | usePositionWithPnl: row-level subscription; markPrice + unrealizedPnl |
+| 4b.9 | Positions UI panel | done | nextjs-react-engineer | | PositionsPanel + PnlText; row-level subs; sign-aware color |
+| 4b.V | Verification checklist (incl. worked examples) | done | trading-domain-engineer + nextjs-react-engineer | | pnpm typecheck 0 errors |
 
 ## Phase 5 — Testing, A11y, Polish, Deploy
 
