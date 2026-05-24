@@ -16,7 +16,7 @@ export function ChartShell({ symbol }: ChartShellProps) {
   const loadState = useCandleLoadState(symbol, interval);
 
   return (
-    <div className="bg-zinc-900 rounded-lg p-4">
+    <div className="bg-zinc-900 rounded-lg p-4 flex flex-col h-full">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-zinc-400 text-xs font-mono">{symbol}</span>
         <div className="flex gap-1 ml-auto">
@@ -41,7 +41,9 @@ export function ChartShell({ symbol }: ChartShellProps) {
           <span className="text-red-400 text-xs font-mono ml-2">error</span>
         )}
       </div>
-      <Chart symbol={symbol} interval={interval} />
+      <div className="flex-1 min-h-0">
+        <Chart symbol={symbol} interval={interval} />
+      </div>
     </div>
   );
 }

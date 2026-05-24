@@ -109,8 +109,9 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
 
       <form onSubmit={handleSubmit} className="space-y-2">
         <div>
-          <label className="block text-xs text-zinc-500 mb-1">Size (BTC)</label>
+          <label htmlFor="order-size" className="block text-xs text-zinc-500 mb-1">Size (BTC)</label>
           <input
+            id="order-size"
             type="number"
             min="0"
             step="any"
@@ -123,8 +124,9 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
 
         {type === 'limit' && (
           <div>
-            <label className="block text-xs text-zinc-500 mb-1">Limit Price (USD)</label>
+            <label htmlFor="order-limit-price" className="block text-xs text-zinc-500 mb-1">Limit Price (USD)</label>
             <input
+              id="order-limit-price"
               type="number"
               min="0"
               step="any"

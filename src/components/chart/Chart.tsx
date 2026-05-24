@@ -23,7 +23,7 @@ export function Chart({ symbol, interval }: ChartProps) {
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: containerRef.current.clientHeight || 400,
       layout: {
         background: { color: 'transparent' },
         textColor: '#d1d5db',
@@ -75,19 +75,22 @@ export function Chart({ symbol, interval }: ChartProps) {
       }
     });
 
-    const handleResize = () => {
-      if (containerRef.current !== null) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener('resize', handleResize);
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry === undefined || containerRef.current === null) return;
+      chart.applyOptions({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+    ro.observe(containerRef.current);
 
     return () => {
       unsubscribe();
-      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
       chart.remove();
     };
   }, [symbol, interval]);
 
-  return <div ref={containerRef} className="w-full" />;
+  return <div ref={containerRef} className="w-full h-full" />;
 }

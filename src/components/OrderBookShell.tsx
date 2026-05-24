@@ -34,24 +34,19 @@ export function OrderBookShell({ symbol }: OrderBookShellProps) {
     getKrakenClient()?.connect();
   }, []);
 
-  const { dotColor, label } = statusDisplay(connState);
-
   return (
-    <div className="max-w-sm">
-      <div className="flex items-center gap-2 mb-4 text-xs font-mono text-zinc-400">
-        <span className={dotColor}>●</span>
-        <span>{label}</span>
-      </div>
-
+    <div className="flex flex-col h-full px-3 py-2">
       {connState.status === 'open' && (
-        <OrderBookProvider symbol={symbol} depth={25}>
-          <OrderBook symbol={symbol} depth={25} />
+        <OrderBookProvider symbol={symbol} depth={10}>
+          <OrderBook symbol={symbol} depth={10} />
         </OrderBookProvider>
       )}
 
       {connState.status !== 'open' && (
-        <div className="text-zinc-600 text-sm font-mono">Waiting for connection…</div>
+        <div className="text-zinc-600 text-sm font-mono text-center pt-4">Waiting for connection…</div>
       )}
     </div>
   );
 }
+
+export { statusDisplay };

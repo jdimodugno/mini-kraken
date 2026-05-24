@@ -116,6 +116,23 @@ export class SubscriptionManager {
     this.subscriptions.delete(key);
   }
 
+  // Sends an unsubscribe + subscribe wire pair for a single descriptor without
+  // touching ref counts. Used by OrderBookProvider to force Kraken to re-send a
+  // snapshot after a checksum failure — the logical subscription remains active
+  // the entire time so ref counts stay consistent.
+  forceResync(descriptor: ChannelDescriptor): void {
+    if (this.client.getConnectionState().status !== 'open') return;
+    this.client.unsubscribe({
+      channel: descriptor.channel,
+      symbol: [descriptor.symbol],
+    });
+    this.client.subscribe({
+      channel: descriptor.channel,
+      symbol: [descriptor.symbol],
+      ...(descriptor.depth !== undefined ? { depth: descriptor.depth } : {}),
+    });
+  }
+
   // One batched subscribe frame per (channel, depth, interval) group avoids
   // sending N individual frames when resubscribing after a reconnect.
   // interval is included in the group key because Kraken's ohlc channel takes

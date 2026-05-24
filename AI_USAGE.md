@@ -188,6 +188,17 @@ Group entries under phase headings (`## Phase 2a — Order Book Data`). New phas
 - **Human correction:** Accepted as-is. No deviations beyond what was already settled by the trading-domain-engineer delegation.
 - **Files touched:** `src/components/trading/PnlText.tsx`, `src/components/trading/MarketPreview.tsx`, `src/components/trading/OrderEntry.tsx`, `src/components/trading/OpenOrders.tsx`, `src/components/trading/FilledOrders.tsx`, `src/components/trading/PositionsPanel.tsx`, `src/components/trading/TradingPanel.tsx`, `src/app/page.tsx`
 
+## Phase 5 — Testing, A11y, Polish, Deploy
+
+### 2026-05-23 — Test stack setup + unit tests (5.1–5.5)
+
+- **Agent:** qa-test-engineer (sonnet)
+- **Task:** Wire vitest + RTL + jsdom + Playwright config and write 53 unit/component tests across OrderBook, position math, simulator, and OrderEntry.
+- **What AI got right:** All 53 tests pass across 4 suites (15 OrderBook, 13 positions, 12 simulator, 13 OrderEntry). Tests use behavior-only RTL queries (`getByRole`, `getByLabelText`) with no class-name assertions, correctly anticipating that layout and styles will change in later phases. The agent used the real `Level` type with `Decimal` for price/qty — not the plain `number` the roadmap example showed. Caught and fixed a real a11y bug in production code: `OrderEntry.tsx` labels were not associated with their inputs (missing `htmlFor`/`id` pairs). Correctly identified and tested the observable behavior for the insufficient-liquidity case — warning visible, button stays enabled — rather than blindly asserting the roadmap's incorrect claim that the submit button should be disabled.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Three roadmap deviations noted and accepted: (a) `Level` shape uses `Decimal`, not `number` as roadmap example showed; (b) insufficient-liquidity submit behavior is warning-visible rather than button-disabled; (c) a11y bug fix in `OrderEntry.tsx` was a production code change, not a test-only change.
+- **Files touched:** `vitest.config.ts`, `vitest.setup.ts`, `playwright.config.ts`, `package.json`, `src/components/trading/OrderEntry.tsx`, `src/lib/orderbook/__tests__/orderbook.test.ts`, `src/lib/trading/__tests__/positions.test.ts`, `src/lib/trading/__tests__/simulate.test.ts`, `src/components/trading/__tests__/order-entry.test.tsx`
+
 ## Phase 3 — Candlestick Charting
 
 ### 2026-05-23 — Phase 3 architecture review

@@ -74,10 +74,12 @@ export const statusSchema = z.object({
 // Method messages — discriminated on the `method` field (no `channel` field)
 // ---------------------------------------------------------------------------
 
-export const pongSchema = z.object({
-  method: z.literal("pong"),
-  req_id: z.number().optional(),
-});
+export const pongSchema = z
+  .object({
+    method: z.literal("pong"),
+    req_id: z.union([z.number(), z.string(), z.null()]).optional(),
+  })
+  .passthrough();
 
 // Subscribe result carries at minimum `channel`; `symbol` is present when the
 // subscription is per-symbol. .passthrough() because Kraken may add result

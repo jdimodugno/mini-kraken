@@ -114,11 +114,11 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 
 | # | Step | Status | Agent | Commit | Notes |
 |---|---|---|---|---|---|
-| 5.1 | Test stack install + vitest config | pending | | | |
-| 5.2 | OrderBook unit tests | pending | | | |
-| 5.3 | Position math unit tests (incl. flip case) | pending | | | |
-| 5.4 | Simulator unit tests | pending | | | |
-| 5.5 | OrderEntry component tests (RTL) | pending | | | |
+| 5.1 | Test stack install + vitest config | done | qa-test-engineer | | vitest + RTL + jsdom + Playwright config wired; test scripts in package.json |
+| 5.2 | OrderBook unit tests | done | qa-test-engineer | | 15 tests; real Decimal Level shape; behavior-only queries |
+| 5.3 | Position math unit tests (incl. flip case) | done | qa-test-engineer | | 13 tests; all 3 applyFillToPosition cases incl. flip |
+| 5.4 | Simulator unit tests | done | qa-test-engineer | | 12 tests; Decimal throughout; partial-fill and slippage cases |
+| 5.5 | OrderEntry component tests (RTL) | done | qa-test-engineer | | 13 tests; a11y bug in OrderEntry.tsx fixed (htmlFor/id); warning-visible not button-disabled for insufficient liquidity |
 | 5.6 | Playwright E2E smoke test | pending | | | |
 | 5.7 | A11y: debounced aria-live, sr-only ticker | pending | | | |
 | 5.8 | Keyboard navigation pass | pending | | | |

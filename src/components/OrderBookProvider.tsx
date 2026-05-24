@@ -5,6 +5,7 @@ import { toLevel } from '@/lib/orderbook/orderbook';
 import { getKrakenClient, getSubscriptionManager } from '@/lib/kraken/index';
 import { useChannelSubscription } from '@/lib/kraken/use-channel';
 import { useOrderBookStore, useOrderBookStatus, type ChecksumStatus } from '@/stores/orderbook-store';
+import type { BookSnapshot, BookUpdate } from '@/lib/kraken/schemas';
 
 interface OrderBookProviderProps {
   symbol: string;
@@ -28,14 +29,15 @@ export function OrderBookProvider({ symbol, depth = 25, children }: OrderBookPro
 
     return client.onMessage((msg) => {
       if (!('channel' in msg) || msg.channel !== 'book') return;
+      const bookMsg = msg as BookSnapshot | BookUpdate;
 
-      for (const entry of msg.data) {
+      for (const entry of bookMsg.data) {
         if (entry.symbol !== symbol) continue;
 
         const bids = entry.bids.map(toLevel);
         const asks = entry.asks.map(toLevel);
 
-        if (msg.type === 'snapshot') {
+        if (bookMsg.type === 'snapshot') {
           applySnapshot(symbol, bids, asks);
         } else {
           applyUpdate(symbol, bids, asks, entry.checksum);
@@ -65,12 +67,11 @@ export function OrderBookProvider({ symbol, depth = 25, children }: OrderBookPro
 
     setChecksumStatus(symbol, 'resyncing');
 
-    const descriptor = { channel: 'book', symbol, ...(depth !== undefined ? { depth } : {}) };
-
-    // Force Kraken to send a fresh snapshot: release then re-acquire the subscription.
-    const unsub = subs.subscribe(descriptor);
-    unsub();
-    return subs.subscribe(descriptor);
+    // Send wire unsubscribe+subscribe without changing ref counts — the logical
+    // subscription from useChannelSubscription stays active (refCount >= 1),
+    // so a plain subscribe/unsub dance never drops to 0 and sends nothing.
+    // forceResync bypasses ref counting and directly sends the wire frames.
+    subs.forceResync({ channel: 'book', symbol, ...(depth !== undefined ? { depth } : {}) });
   }, [checksumStatus, symbol, depth, setChecksumStatus]);
 
   return (
