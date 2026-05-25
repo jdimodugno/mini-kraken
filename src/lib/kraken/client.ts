@@ -41,7 +41,7 @@ export class KrakenClient {
 
     const result = krakenMessageSchema.safeParse(parsed);
     if (!result.success) {
-      console.debug('[KrakenClient] unknown message shape', parsed, result.error);
+      console.warn('[KrakenClient] unknown message shape', parsed, result.error);
       return;
     }
 
@@ -79,11 +79,13 @@ export class KrakenClient {
     };
   }
 
-  subscribe(params: { channel: string; symbol?: string[]; depth?: number; interval?: number }): boolean {
-    return this.manager.send({ method: 'subscribe', params });
+  subscribe(params: { channel: string; symbol?: string[]; depth?: number; interval?: number; req_id?: number }): boolean {
+    const { req_id, ...rest } = params;
+    return this.manager.send({ method: 'subscribe', params: rest, ...(req_id !== undefined ? { req_id } : {}) });
   }
 
-  unsubscribe(params: { channel: string; symbol?: string[] }): boolean {
-    return this.manager.send({ method: 'unsubscribe', params });
+  unsubscribe(params: { channel: string; symbol?: string[]; req_id?: number }): boolean {
+    const { req_id, ...rest } = params;
+    return this.manager.send({ method: 'unsubscribe', params: rest, ...(req_id !== undefined ? { req_id } : {}) });
   }
 }

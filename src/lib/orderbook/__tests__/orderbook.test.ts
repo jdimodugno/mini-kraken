@@ -168,6 +168,34 @@ describe('OrderBook', () => {
     });
   });
 
+  describe('getBestBidPrice / getBestAskPrice', () => {
+    it('returns null for an empty book', () => {
+      expect(book.getBestBidPrice()).toBeNull();
+      expect(book.getBestAskPrice()).toBeNull();
+    });
+
+    it('returns the top bid and ask prices without array allocation', () => {
+      book.applySnapshot(
+        [level('100', '1'), level('102', '2'), level('101', '3')],
+        [level('103', '1'), level('105', '2')],
+      );
+      expect(book.getBestBidPrice()?.toNumber()).toBe(102);
+      expect(book.getBestAskPrice()?.toNumber()).toBe(103);
+    });
+
+    it('returns null ask when only bids exist', () => {
+      book.applySnapshot([level('100', '1')], []);
+      expect(book.getBestBidPrice()?.toNumber()).toBe(100);
+      expect(book.getBestAskPrice()).toBeNull();
+    });
+
+    it('returns null bid when only asks exist', () => {
+      book.applySnapshot([], [level('101', '1')]);
+      expect(book.getBestBidPrice()).toBeNull();
+      expect(book.getBestAskPrice()?.toNumber()).toBe(101);
+    });
+  });
+
   describe('getBids / getAsks depth', () => {
     it('respects the depth argument', () => {
       book.applySnapshot(

@@ -78,6 +78,8 @@ export const useCandlesStore = create<CandlesStore>()((set, get) => ({
       candleMap.set(c.time, c);
     }
 
+    // noUncheckedIndexedAccess requires the optional chain even after the length guard;
+    // the ?? 0 fallback is unreachable in practice but satisfies the type checker.
     const lastRestTime = candles.length > 0 ? (candles[candles.length - 1]?.time ?? 0) : 0;
 
     // WS wins for any pending update at or after the last REST candle time

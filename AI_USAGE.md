@@ -218,3 +218,134 @@ Group entries under phase headings (`## Phase 2a — Order Book Data`). New phas
 - **What AI got wrong:** Nothing notable — the three roadmap deviations below were caught and resolved by the agent before reporting.
 - **Human correction:** Accepted as-is. Three roadmap deviations were surfaced and corrected during implementation: (1) `resubscribeAll` group record required an `interval` value to pass in the subscribe frame — roadmap omitted this field; (2) `useCandlesStore.subscribe(selector, listener)` two-arg form requires `subscribeWithSelector` middleware not present in the codebase — implemented listener-only with manual version-equality check instead; (3) `lightweight-charts` v5 API is `chart.addSeries(CandlestickSeries, options)`, not `chart.addCandlestickSeries()` — roadmap had the v4 API.
 - **Files touched:** `src/lib/kraken/client.ts`, `src/lib/kraken/subscription-manager.ts`, `src/lib/kraken/use-channel.ts`, `src/lib/kraken/schemas.ts`, `src/lib/candles/types.ts`, `src/lib/candles/schemas.ts`, `src/lib/candles/fetch-historical.ts`, `src/lib/candles/use-candles.ts`, `src/stores/candles-store.ts`, `src/components/chart/Chart.tsx`, `src/components/chart/ChartShell.tsx`, `src/app/page.tsx`
+
+## Tooling — Agent Config
+
+### 2026-05-25 — BACKLOG H3/H4/H5/M9 design (subscription ack correlation, unsubscribe race, resync race)
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Design solutions for BACKLOG issues H3 (subscription ack correlation), H4 (unsubscribing race), and H5/M9 (resync race / cross-epoch delta isolation).
+- **What AI got right:** Produced a unified, implementation-ready design covering all three issues in a single pass. (1) H3: `req_id` as sole correlator — SubscriptionManager stamps each subscribe/unsubscribe frame with a unique `req_id` and matches incoming acks by that field, discarding acks that carry no matching pending entry. (2) H4: discriminated `Phase` state machine adding `unsubscribing` and `queuedResubscribe` variants — entries persist in the manager through `unsubscribing` rather than being removed, and a `releasePending` flag dequeues a queued resubscribe once the ack for the unsubscribe arrives. (3) H5 (subsumes M9): per-key monotonic epoch owned by SubscriptionManager, stamped into each message at parse time in `client.ts`; the store rejects any delta whose epoch is less than the current epoch for that key, making cross-epoch isolation an O(1) integer comparison rather than a checksum-only guard. Also included: sequencing diagram, test plan for each fix, and a rollback hedge (optional epoch param allowing the three PRs to land in one merge).
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Architect surfaced 3 open questions before the design was finalized — (1) whether provider or SubscriptionManager should own the epoch, (2) whether an ack-watchdog timeout should be a ticket in this trio or a separate backlog item, (3) whether `req_id` schema confirmation needed a Kraken docs check. Human resolved all three: manager owns epoch, watchdog is a separate backlog ticket, proceed to implementation as one trio. Design accepted as-is after those answers were incorporated.
+- **Files touched:** None — design-only delegation. No code or doc edits produced.
+
+## Backlog — L8, L9, H9 (money-math audit fixes)
+
+### 2026-05-25 — Backlog items L8, L9, H9
+
+- **Agent:** trading-domain-engineer (sonnet) — planning pass then implementation pass
+- **Task:** Fix L8 (`feeBps` float-safety), add L9 JSDoc on `FilledOrder.totalCost`, and address H9 (`fill.fee` Decimal accumulation warning in positions-store).
+- **What AI got right:** Planning pass correctly identified L8 as a config-not-money parameter — `feeBps` is a fixed integer basis-point value, not a financial quantity — and recommended an integer-guard (assertion that the value is a safe integer) plus JSDoc documenting the caller contract rather than forcing a Decimal wrap, which would have been overengineered. For H9, correctly determined that `positions-store` has no `number` accumulator for fees yet (phase 6+ fill aggregation has not landed), so the appropriate fix is a pre-emptive comment flagging the constraint rather than a code change against non-existent logic. L9 JSDoc added to `FilledOrder.totalCost` clarifying that the field excludes fees. All 14/14 vitest tests pass; typecheck clean.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Single PR bundle for all three items.
+- **Files touched:** `src/lib/trading/simulate.ts`, `src/lib/trading/types.ts`, `src/stores/positions-store.ts`, `src/lib/trading/__tests__/simulate.test.ts`
+
+## Backlog — Subscription Reliability (H3/H4/H5/M9)
+
+### 2026-05-25 — BACKLOG H3/H4/H5/M9 implementation (req_id, Phase state machine, epoch isolation)
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Implement BACKLOG H3 + H4 + (H5 + M9) per architect design — req_id correlation, discriminated Phase state machine, per-key epoch resync isolation.
+- **What AI got right:** Full rewrite of `subscription-manager.ts` landed cleanly: monotonic `req_id` counter, `pendingRequests` map keyed by req_id, four-state `Phase` discriminated union (`subscribing` / `subscribed` / `unsubscribing` / `idle`) with `queuedResubscribe` and `releasePending` flags, per-key `epochs` map with `getEpoch()` / `bumpEpoch()`, `forceResync` renamed to `requestResync` that bumps epoch before unsubscribe and rides the `queuedResubscribe` path. `orderbook-store` gained `bookEpochs: Map<string, number>` and optional `epoch` param on `applySnapshot`/`applyUpdate` (rollback hedge); `resyncing` no longer gates `applyUpdate`. Provider reads `subs.getEpoch()` synchronously per book frame; HMR `useEffect` that reset `resyncing` deleted (bug class gone with epoch model). Schemas gained `req_id` field plus `.passthrough()` on sub/unsub ack schemas. `KrakenClient.subscribe`/`unsubscribe` hoist `req_id` to frame top-level matching Kraken WS v2 wire format. 15 new unit tests (10 subscription-manager, 5 orderbook-store) — 71/71 tests pass. Three entries appended to `DECISIONS.md`.
+- **What AI got wrong:** Architect design placed `req_id` inside `params`; Kraken WS v2 wire format requires it at the outer frame level (sibling of `method`). Agent correctly placed it at the outer level but this was a deviation from the design doc, not an error caught by the design. Also: `resubscribeAll` batches one subscribe frame per `(channel, depth, interval)` group, so one `req_id` covers multiple symbols and per-symbol acks for the same id hit a "pending not found" early-return — benign under the epoch model (entries stay in `subscribing` but epoch already bumped), but logged by the agent as a known limitation without filing a ticket.
+- **Human correction:** Accepted as-is. No changes requested.
+- **Files touched:** `src/lib/kraken/schemas.ts`, `src/lib/kraken/client.ts`, `src/lib/kraken/subscription-manager.ts`, `src/stores/orderbook-store.ts`, `src/components/OrderBookProvider.tsx`, `DECISIONS.md`, `src/lib/kraken/__tests__/subscription-manager.test.ts` (new), `src/stores/__tests__/orderbook-store.test.ts` (new)
+
+## Backlog — Performance (H7: O(N²) selector fix)
+
+### 2026-05-25 — BACKLOG H7: O(N²) work in selectLevelDisplay
+
+- **Agent:** react-performance-engineer (sonnet)
+- **Task:** Fix O(N²) cumulative-depth work in `selectLevelDisplay` (orderbook selector) per BACKLOG item H7.
+- **What AI got right:** Correctly pushed back on the backlog note's "hoist derivation above selector (store)" framing — proposed hoisting into `OrderBook` `useMemo` instead, which avoids conflict with the store's M1 Map-clone concern and keeps store shape unchanged. Human approved the alternative plan before implementation began. Measured the hot path with an isolated Node micro-benchmark (200 ticks × 25 depth × 50 rows): baseline p95 0.098ms → post-fix p95 0.016ms (6x speedup). Removed `depthPct` from `LevelDisplay` and eliminated the cumulative loop + reduce in the selector, making it an O(1) index lookup of `priceStr` + `qtyStr`. Added a `computeDepthPcts` helper with `useMemo` in `OrderBook.tsx` keyed on `lastUpdateAt`, reading the book via `useOrderBookStore.getState()` to avoid triggering a new subscription. `BookRow` received a new `depthPct: number` prop applied to `style`. `useMemo + getState()` pattern preserved the `lastUpdateAt`-pinned re-render gate — a naive subscription would have caused cross-symbol re-renders.
+- **What AI got wrong:** No production-code instrumentation was added; the benchmark was a throwaway Node script. Acceptable per agent — `marks.ts` covers in-browser observability. The agent also flagged but did not fix a follow-on: `getBids`/`getAsks` `.slice()` per-row still allocates O(N) per tick × 50 rows. Not acted on as it was outside scope.
+- **Human correction:** Accepted as-is. Pre-task: human chose "measure + fix in one pass" over measure-only.
+- **Files touched:** `src/components/orderbook/selectors.ts`, `src/components/orderbook/OrderBook.tsx`, `src/components/orderbook/BookRow.tsx`
+
+## Backlog — Cross-Cutting Hardening (post-Phase 5)
+
+### 2026-05-25 — Cross-cutting hardening planning (H1, H2, H3–H5, H6, H8, M1–M11, L2–L11)
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Review BACKLOG.md and produce per-issue implementation plans for all hardening items before any code was written.
+- **What AI got right:** Produced actionable per-issue plans for H1, H2, H6, H8, and M1–M11 and L2–L11 in a single pass. Correctly identified H3/H4/H5 as blocked on architect sign-off (req_id correlation, unsubscribing race, epoch design) before implementation could begin. Flagged M2/M3 as requiring human scope decision (they touch SubscriptionManager internals that interact with the H3/H4 state machine). Correctly noted L3 (fallback loading skeleton) as dependent on H6 (Suspense boundaries) landing first.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. H3/H4/H5 routed to realtime-architect before implementation. M2/M3 scope deferred to human decision post-architect review.
+- **Files touched:** None — planning only.
+
+### 2026-05-25 — Cross-cutting hardening architecture review (H3, H4, H5 impl deltas)
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Ratify existing scaffolding for req_id correlation (H3), releaseSubscription race (H4), and epoch token (H5); identify any implementation gaps before the nextjs-react-engineer delegation.
+- **What AI got right:** Confirmed the prior H3/H4/H5 design was sound. Identified 4 concrete implementation deltas that were missing from the existing code: (1) `releasePending` must be cleared in the subscribing-phase `subscribe()` call (not only on ack arrival), otherwise a queued resubscribe could ghost; (2) a watchdog `setInterval` with `ACK_TIMEOUT_MS = 10000` should fire after each pending request to recover from acks silently dropped by the server; (3) any non-`open` connection status transition must wipe `pendingRequests` and reset all phases to idle, preventing stale phase state from surviving a reconnect; (4) `destroy()` must clear the watchdog interval to avoid a leak after the manager is torn down. Locked the invariant that `req_id` (wire correlation) and `epoch` (generation correlation) remain distinct tokens and must never be conflated.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Human resolved 4 open design decisions: (1) per-symbol resubscribe on reconnect (not grouped batch); (2) watchdog interval 10 s confirmed; (3) error-ack handling — immediate idle + single retry, surface `status: 'failed'` to the provider; (4) `resyncing` stays as UX-only state (not gated on epoch). All 4 decisions accepted before implementation.
+- **Files touched:** None — design only.
+
+### 2026-05-25 — Cross-cutting hardening implementation (H1, H2, H3/H4/H5 deltas, H6, H8, M1)
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Implement Group A (H1, H2, H6, H8, M1) and Group B (H3/H4/H5 architect deltas) in a single delegation.
+- **What AI got right:** All items landed with `pnpm typecheck` clean and 92/92 tests passing. H1/H2: `connection-manager.ts` updated with the relevant fixes. H4 gap + watchdog + reconnect-wipe + per-symbol resubscribe + error-ack retry/failure + `destroy()` cleanup all implemented in `subscription-manager.ts`. M1: `orderbook-store.ts` switched to in-place `Map` mutation (eliminates the per-tick clone). H8: `OrderBook.tsx` keyed rows by `rawPrice` string (stable key across re-renders, eliminates unmount/remount churn on depth changes). H6: `page.tsx` gained `<Suspense>` boundaries with skeletons while remaining a Server Component. New test file `src/lib/kraken/__tests__/subscription-manager-groupb.test.ts` covers the Group B deltas. The `status?: 'failed'` field on subscription entries uses the `delete` idiom to satisfy `exactOptionalPropertyTypes`; pre-existing epoch double-bump in `resubscribeAll` was found and fixed as a side effect; `wipePendingOnDisconnect` fires on all non-`open` statuses (not just `disconnected`).
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** H6 browser verification (Suspense skeleton visible under throttled network) deferred — requires human with devtools network throttling. All code changes accepted as-is.
+- **Files touched:** `src/lib/ws/connection-manager.ts`, `src/lib/kraken/subscription-manager.ts`, `src/stores/orderbook-store.ts`, `src/components/orderbook/OrderBook.tsx`, `src/app/page.tsx`, `src/lib/kraken/__tests__/subscription-manager-groupb.test.ts`
+
+### 2026-05-25 — Cross-cutting hardening M/L tier batch (M2–M6, M8, M10–M11, L2–L7, L10–L11)
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Implement 16 M/L-tier backlog hardening items across CSS tokens, OrderEntry validation, OrderBook selector, connection-manager control path, route-level loader, store hooks, and test coverage.
+- **What AI got right:** All 16 items landed in a single pass with typecheck clean and tests advancing from 92 to 96 (all pass). M2: de-duplicated hex values in `globals.css` while preserving existing class names. M3: conservative token approach — dropped `--background`/`--foreground` from `@theme inline`, leaving them as plain CSS vars driving `body` only (no cascade bleed). M4: CSS token or utility addition in `globals.css`. M5/M8: `OrderEntry.tsx` validation and UX hardening. M6: added `getBestBidPrice`/`getBestAskPrice` methods on `OrderBook` class and updated `CurrentPrice.tsx` to call them directly, eliminating a selector-level array allocation per tick. M10: added `sendControl` method on `connection-manager.ts` plus corrected the buffer comment; M11: armed the pong deadline timer correctly on visibility restore; also added clarifying comment for L11. L2: `layout.tsx` className statically set from font CSS variables — `suppressHydrationWarning` not needed. L3: new `src/app/loading.tsx` route-level loader (depends on H6 Suspense boundary already landed). L4/L6: `OrderEntry.tsx` updates. L5: comment added to `selectors.ts`. L7: optional chain in `candles-store.ts` intentionally kept — required by `noUncheckedIndexedAccess`; comment documents the constraint. L10: `usePosition` hook added to `positions-store.ts`. L11: comment added to `connection-manager.ts`. Self-caught bug during L6: switching `!== null` to `!== undefined` violated `exactOptionalPropertyTypes` on `OrderRequest` spread; resolved with `!= null` (narrows both null and undefined).
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** M3 conservative scope chosen by human (drop `--background`/`--foreground` from `@theme inline`; keep as plain CSS vars). M2 conservative scope chosen by human (de-dupe hex values only; keep existing class names). Both decisions made before implementation began.
+- **Files touched:** `src/app/globals.css`, `src/components/trading/OrderEntry.tsx`, `src/lib/orderbook/orderbook.ts`, `src/components/CurrentPrice.tsx`, `src/lib/ws/connection-manager.ts`, `src/app/loading.tsx`, `src/components/orderbook/selectors.ts`, `src/stores/positions-store.ts`, `src/stores/candles-store.ts`, `src/lib/orderbook/__tests__/orderbook.test.ts`
+
+## Backlog — Candle Chart Bug (H10)
+
+### 2026-05-25 — BACKLOG H10: frozen live candle chart diagnosis
+
+- **Agent:** realtime-architect (opus)
+- **Task:** End-to-end diagnosis of the frozen live candle chart (BACKLOG H10) — never worked since Phase 3 shipped.
+- **What AI got right:** Traced the full pipeline (wire → schema → dispatch → pipe → render) and pinpointed the break in one pass: `ohlcDataSchema` in `src/lib/kraken/schemas.ts` (lines 127–137) declares `open`/`high`/`low`/`close`/`volume`/`vwap` as `z.string()`, but Kraken WS v2 sends them as JSON numbers. Every live ohlc frame fails Zod validation at `client.ts:44` and is dropped via a `console.debug` call — silently invisible. Verified the wire format against Kraken WS v2 docs via `npx ctx7@latest` (price/volume = floats, `timestamp` deprecated). Correctly explained the schema asymmetry: the book schema uses `z.string()` paired with a regex pre-quoting reviver in `client.ts` for checksum-precision reasons; ohlc has no reviver and should consume numbers directly. Correctly identified that the historical (REST) path works because it routes through `ohlcRestRowSchema`, a separate schema. Surfaced the meta-bug: parse-failure logging at `console.debug` level made the failure observability-dark — recommended upgrading to `console.warn`.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Architect surfaced 2 open questions: (a) schema-parse-failure counter in the sync-status header chip vs. warn-level log only; (b) whether to fix per-interval handler routing in `use-candles.ts` in the same PR. Human resolved both: warn-only logging (skip header chip), and per-interval routing filed as a separate backlog row (M13) — not included in this PR.
+- **Files touched:** None — design-only delegation.
+
+### 2026-05-25 — BACKLOG H10: ohlcDataSchema fix + parse-failure visibility
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Fix `ohlcDataSchema` field types from `z.string()` to `z.number()`, remove six `parseFloat()` calls in `use-candles.ts`, upgrade parse-failure log to `console.warn`, and add schema regression tests.
+- **What AI got right:** All 4 edits landed in one pass with typecheck clean. `ohlcDataSchema` correctly flipped `open`/`high`/`low`/`close`/`volume`/`vwap` to `z.number()`, changed `timestamp` to `z.string().optional()` (matching the deprecated-but-still-present wire field), and added `.passthrough()`. `use-candles.ts` had all six `parseFloat()` calls removed — values now flow through directly as numbers from the schema. `client.ts:44` parse-failure log upgraded from `console.debug` to `console.warn`, making previously invisible ohlc frame drops observable. New test file `src/lib/kraken/__tests__/schemas.test.ts` adds 3 tests: snapshot with `timestamp`, update without `timestamp`, and a regression guard that explicitly rejects string-valued ohlc fields. Test count advanced 96 → 99 with all passing.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is.
+- **Files touched:** `src/lib/kraken/schemas.ts`, `src/lib/candles/use-candles.ts`, `src/lib/kraken/client.ts`, `src/lib/kraken/__tests__/schemas.test.ts` (new)
+
+## Backlog — H11: Chart price-axis vs. header price divergence investigation
+
+### 2026-05-25 — BACKLOG H11: chart label vs. header price ~10c gap
+
+- **Agent:** realtime-architect (opus)
+- **Task:** Analyze whether the ~10c gap between the chart right-axis price label and the header price represents a sync bug.
+- **What AI got right:** Confirmed in one pass that there are exactly two sources, not three: the header price and `CurrentPrice` both derive from `OrderBook.getBestBidPrice()` on the `book` WS channel (best resting bid); the chart right-axis label is set by `lightweight-charts` from the last candle's `close`, sourced from the `ohlc` WS channel (last printed trade price). Correctly identified this as not a bug — the two values are semantically different (best bid vs. last trade), and a ~10c gap on BTC reflects normal spread/quiet-tape behavior. Correctly identified that neither pipeline has a latency problem — both are per-message synchronous. Correctly explained the "persisting on screen" observation: the chart label only mutates when a new ohlc frame arrives, while the book ticks freely between trades (quiet-tape effect). Produced a clear recommendation: keep both sources and add explicit labels so users can distinguish them ("Bid 77042.60" in the header, or a bid/ask/spread display), surfacing market microstructure rather than hiding it. Surfaced two adjacent perf flags independently, consistent with the H10 architect's earlier findings: (1) `Chart.tsx:55` subscribes to the candles store with no selector and a manual version diff, firing on every mutation; (2) `candles-store.applyLiveUpdate` sorts the full array O(n log n) per ohlc tick.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted the "not a bug" verdict. Architect surfaced one open question to the human before prescribing a fix: should the header show best bid, last trade, or bid/ask/spread? Fix depends on that answer — orchestrator is relaying the question to the human. No implementation authorized yet.
+- **Files touched:** None — analysis only.
+
+### 2026-05-25 — BACKLOG H11: replace single-value CurrentPrice with Bid/Ask/Spread display
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Rewrite `CurrentPrice.tsx` to show labeled Bid / Ask / Spread fields per architect recommendation (c) from the H11 analysis.
+- **What AI got right:** Single-file rewrite delivered in one pass. Selector returns `{ bid: string | null, ask: string | null, spread: string | null }` with all `Decimal.toFixed(2)` conversions at the selector boundary. `bidAskSpreadEqual` custom comparator paired with `useStoreWithEqualityFn` prevents re-renders unless one of the three string values changes. Selector correctly reads `s.lastUpdateAt.get(symbol)` via `void` to ensure it re-runs on every book mutation. Leveraged the pre-existing `OrderBook.getSpread()` method (`orderbook.ts:129`) alongside `getBestBidPrice()`/`getBestAskPrice()` — no new helper needed. Empty book renders `—` for each field (no NaN). Syncing indicator preserved. Visual output: `Bid 77042.60 · Ask 77042.80 · Spread 0.20` with Bid green, Ask red, Spread zinc-300.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is.
+- **Files touched:** `src/components/CurrentPrice.tsx`
+
+### 2026-05-25 — Install Claude Code skills for nextjs-react-engineer
+
+- **Agent:** orchestrator (direct work, no skill agent)
+- **Task:** Install three Claude Code skills globally and wire them into the `nextjs-react-engineer` agent definition.
+- **What AI got right:** Skill discovery via `npx skills find` surfaced install counts and source reputation, making trust decisions straightforward. The three skills selected cover the relevant surface area: React 19 / Next.js perf guidance (`vercel-react-best-practices`, 426K installs), App Router patterns (`nextjs-app-router-patterns`, 18.8K installs), and View Transitions API (`vercel-react-view-transitions`, 41.6K installs). The `nextjs-react-engineer.md` update correctly maps each skill to its invocation trigger and adds a rule that skill guidance overrides training-data assumptions with conflicts surfaced to the orchestrator.
+- **What AI got wrong:** `vercel-nextjs-best-practices` is not a real package name in `vercel-labs/agent-skills`. The `npx skills add` CLI entered an interactive picker rather than erroring cleanly, which made the failure ambiguous. Coverage for that intent is provided by the two Vercel-authored skills already installed; no functional gap exists.
+- **Human correction:** Accepted the recommended three-skill substitution. No changes requested beyond what was proposed.
+- **Files touched:** `.claude/agents/nextjs-react-engineer.md`

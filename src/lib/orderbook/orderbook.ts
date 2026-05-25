@@ -103,6 +103,14 @@ export class OrderBook {
     return changed;
   }
 
+  getBestBidPrice(): Decimal | null {
+    return this.bids[0]?.price ?? null;
+  }
+
+  getBestAskPrice(): Decimal | null {
+    return this.asks[0]?.price ?? null;
+  }
+
   getBids(depth: number): readonly Level[] {
     return this.bids.slice(0, depth);
   }

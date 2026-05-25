@@ -19,12 +19,27 @@ export interface SimulationResult {
   levelFills: Array<{ price: Decimal; size: Decimal; fee: Decimal }>;
 }
 
+/**
+ * Simulate a market order against a live order book snapshot.
+ *
+ * @param side - Direction of the order: 'buy' walks asks ascending, 'sell' walks bids descending.
+ * @param size - Base currency quantity to fill (must be positive).
+ * @param book - Current order book snapshot.
+ * @param feeBps - Taker fee in integer basis points (e.g. 25 = 0.25%). Must be a non-negative integer.
+ * @returns SimulationResult with fill details, or null if the relevant side of the book is empty.
+ */
 export function simulateMarketOrder(
   side: Side,
   size: Decimal,
   book: OrderBook,
   feeBps: number,
 ): SimulationResult | null {
+  if (!Number.isInteger(feeBps) || feeBps < 0) {
+    throw new Error(
+      `feeBps must be a non-negative integer (received ${feeBps}). Pass e.g. 25 for 0.25%.`,
+    );
+  }
+
   const levels = side === 'buy' ? book.getAsks(100) : book.getBids(100);
 
   if (levels.length === 0) return null;

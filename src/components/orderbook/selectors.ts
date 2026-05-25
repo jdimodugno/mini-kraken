@@ -3,9 +3,11 @@ import type { OrderBookState } from '@/stores/orderbook-store';
 export interface LevelDisplay {
   priceStr: string;
   qtyStr: string;
-  depthPct: number;
 }
 
+// depthPct is now computed once per side in OrderBook via useMemo and passed as a
+// primitive prop — removing the O(N²) cumulative-sum and reduce that ran inside
+// every row's selector on every update tick.
 export function selectLevelDisplay(
   symbol: string,
   side: 'bid' | 'ask',
@@ -19,17 +21,12 @@ export function selectLevelDisplay(
     const level = levels[index];
     if (!level) return null;
 
-    let cumQty = 0;
-    for (let i = 0; i <= index; i++) {
-      cumQty += levels[i]?.qty.toNumber() ?? 0;
-    }
-    const totalQty = levels.reduce((acc, l) => acc + l.qty.toNumber(), 0);
-    const depthPct = totalQty > 0 ? cumQty / totalQty : 0;
-
     return {
       priceStr: level.price.toFixed(2),
+      // noUncheckedIndexedAccess requires the ?. + ?? 0 pattern here; the array
+      // is padded to totalDepth with empty rows, so 0 is the deliberate sentinel,
+      // not a masked logic error.
       qtyStr: level.qty.toFixed(4),
-      depthPct,
     };
   };
 }
@@ -37,5 +34,5 @@ export function selectLevelDisplay(
 export function levelDisplayEqual(a: LevelDisplay | null, b: LevelDisplay | null): boolean {
   if (a === null && b === null) return true;
   if (a === null || b === null) return false;
-  return a.priceStr === b.priceStr && a.qtyStr === b.qtyStr && a.depthPct === b.depthPct;
+  return a.priceStr === b.priceStr && a.qtyStr === b.qtyStr;
 }

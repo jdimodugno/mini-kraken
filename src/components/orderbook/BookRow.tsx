@@ -10,9 +10,12 @@ interface BookRowProps {
   side: 'bid' | 'ask';
   index: number;
   depth: number;
+  // depthPct is computed once per side in OrderBook (O(N) total) and passed down
+  // as a primitive, replacing the per-row O(N) cumulative-sum that was inside the selector.
+  depthPct: number;
 }
 
-export function BookRow({ symbol, side, index, depth }: BookRowProps) {
+export function BookRow({ symbol, side, index, depth, depthPct }: BookRowProps) {
   const selector = useMemo(
     () => selectLevelDisplay(symbol, side, index, depth),
     [symbol, side, index, depth],
@@ -44,7 +47,7 @@ export function BookRow({ symbol, side, index, depth }: BookRowProps) {
     <div
       ref={rowRef}
       className={`book-row book-row-${side}`}
-      style={{ '--depth-pct': display.depthPct } as React.CSSProperties}
+      style={{ '--depth-pct': depthPct } as React.CSSProperties}
     >
       <span className="book-row-price">{display.priceStr}</span>
       <span className="book-row-qty">{display.qtyStr}</span>

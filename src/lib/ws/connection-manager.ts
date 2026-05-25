@@ -59,10 +59,12 @@ export class ConnectionManager implements IConnectionManager {
       this.reconnectTimer = null;
     }
 
-    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
-
-    // reset intentionallyClosed so reconnect-from-degraded works correctly
+    // Reset before the guard so a CLOSING socket still clears the flag.
+    // Without this, calling connect() while CLOSING leaves intentionallyClosed=true
+    // and the onClose handler silently no-ops the reconnect.
     this.intentionallyClosed = false;
+
+    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) return;
 
     const attempt = this.fastAttempts + 1;
     this.setState({ status: 'connecting', attempt });
@@ -108,12 +110,23 @@ export class ConnectionManager implements IConnectionManager {
     }
 
     if (this.outboundBuffer.length >= this.opts.outboundBufferSize) {
-      // drop the newest (incoming) message; oldest are preserved
+      // Buffer full — drop the newest message; oldest (already buffered) are preserved.
       return false;
     }
 
     this.outboundBuffer.push(serialized);
     return true;
+  }
+
+  // Sends a control frame (ping, pong) directly when OPEN; silently drops otherwise.
+  // Does NOT go through the outbound buffer — control frames must not be queued
+  // behind data messages, and resubscribeAll() handles replay on reconnect.
+  sendControl(payload: unknown): boolean {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(payload));
+      return true;
+    }
+    return false;
   }
 
   onRawMessage(handler: RawMessageListener): () => void {
@@ -146,6 +159,7 @@ export class ConnectionManager implements IConnectionManager {
 
   private setState(next: ConnectionState): void {
     this.state = next;
+    // Array.from snapshot prevents mutation-during-iteration if a listener calls disconnect().
     Array.from(this.stateListeners).forEach((l) => l(next));
   }
 
@@ -164,6 +178,7 @@ export class ConnectionManager implements IConnectionManager {
 
   private onMessage = (event: MessageEvent): void => {
     const raw = typeof event.data === 'string' ? event.data : String(event.data);
+    // Array.from snapshot prevents mutation-during-iteration if a listener calls disconnect().
     Array.from(this.rawMessageListeners).forEach((l) => l(raw));
   };
 
@@ -241,9 +256,14 @@ export class ConnectionManager implements IConnectionManager {
     this.heartbeatTimer = setInterval(() => {
       if (this.pendingPing) return;
 
-      this.pendingPing = true;
-      this.send({ method: 'ping' });
+      const sent = this.sendControl({ method: 'ping' });
+      if (!sent) {
+        // Socket not OPEN — skip arming deadline.
+        // Degraded connection will retry on the next interval.
+        return;
+      }
 
+      this.pendingPing = true;
       this.pongDeadlineTimer = setTimeout(() => {
         this.pongDeadlineTimer = null;
         // Force-close; onClose will handle reconnect
@@ -259,8 +279,15 @@ export class ConnectionManager implements IConnectionManager {
           this.stopHeartbeat();
         } else {
           this.startHeartbeat();
-          // immediate ping after waking — detect stale connection fast
-          this.send({ method: 'ping' });
+          // Immediate ping after waking — detect stale connection fast.
+          const sent = this.sendControl({ method: 'ping' });
+          if (sent) {
+            this.pendingPing = true;
+            this.pongDeadlineTimer = setTimeout(() => {
+              this.pongDeadlineTimer = null;
+              this.socket?.close(4000, 'heartbeat-timeout');
+            }, this.opts.heartbeatIntervalMs / 2);
+          }
         }
       };
 

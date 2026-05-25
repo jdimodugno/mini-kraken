@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useStoreWithEqualityFn } from 'zustand/traditional';
 import { Decimal } from '@/lib/money/decimal';
 import { applyFillToPosition, emptyPosition, type Position } from '@/lib/trading/positions';
 import type { FilledOrder } from '@/lib/trading/types';
@@ -24,6 +25,7 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
 
     const prevRealized = position.realizedPnl;
 
+    // All fee arithmetic must stay in Decimal. Do not introduce a number accumulator here when extending for phase 6+ fee tracking.
     for (const fill of order.fills) {
       position = applyFillToPosition(position, order.side, fill.size, fill.price, fill.fee);
     }
@@ -45,3 +47,11 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
     });
   },
 }));
+
+export function usePosition(symbol: string): Position | undefined {
+  return useStoreWithEqualityFn(
+    usePositionsStore,
+    (s) => s.positions.get(symbol),
+    Object.is,
+  );
+}

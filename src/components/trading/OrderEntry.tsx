@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { Decimal } from '@/lib/money/decimal';
 import { useMarketOrderPreview } from '@/lib/trading/use-market-preview';
 import { useLimitFillTrigger } from '@/lib/trading/use-limit-fill-trigger';
@@ -22,9 +22,13 @@ function parseSafeDecimal(raw: string): Decimal | null {
   }
 }
 
+const inputClass =
+  'w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500';
+
 export function OrderEntry({ symbol }: OrderEntryProps) {
   useLimitFillTrigger(symbol);
 
+  const [, startTransition] = useTransition();
   const [type, setType] = useState<OrderType>('market');
   const [side, setSide] = useState<Side>('buy');
   const [sizeStr, setSizeStr] = useState('');
@@ -33,7 +37,7 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
   const size = parseSafeDecimal(sizeStr);
   const preview = useMarketOrderPreview(symbol, side, type === 'market' ? size : null);
 
-  const isDisabled = (() => {
+  const isDisabled = useMemo(() => {
     if (size === null || !size.gt(0)) return true;
     if (type === 'limit' && !limitPriceStr.trim()) return true;
     if (type === 'market' && preview?.insufficientLiquidity === true && size !== null) {
@@ -41,7 +45,7 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
       // (preview null means no book data, not necessarily insufficient)
     }
     return false;
-  })();
+  }, [size, type, limitPriceStr, preview]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,12 +54,14 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
     const limitPrice = type === 'limit' ? parseSafeDecimal(limitPriceStr) : undefined;
     if (type === 'limit' && limitPrice === null) return;
 
-    useTradingStore.getState().placeOrder({
-      symbol,
-      side,
-      type,
-      size,
-      ...(limitPrice !== undefined && limitPrice !== null ? { limitPrice } : {}),
+    startTransition(() => {
+      useTradingStore.getState().placeOrder({
+        symbol,
+        side,
+        type,
+        size,
+        ...(limitPrice != null ? { limitPrice } : {}),
+      });
     });
 
     setSizeStr('');
@@ -118,7 +124,7 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
             value={sizeStr}
             onChange={(e) => setSizeStr(e.target.value)}
             placeholder="0.00"
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+            className={inputClass}
           />
         </div>
 
@@ -133,7 +139,7 @@ export function OrderEntry({ symbol }: OrderEntryProps) {
               value={limitPriceStr}
               onChange={(e) => setLimitPriceStr(e.target.value)}
               placeholder="0.00"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              className={inputClass}
             />
           </div>
         )}

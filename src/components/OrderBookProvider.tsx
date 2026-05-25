@@ -31,6 +31,11 @@ export function OrderBookProvider({ symbol, depth = 25, children }: OrderBookPro
       if (!('channel' in msg) || msg.channel !== 'book') return;
       const bookMsg = msg as BookSnapshot | BookUpdate;
 
+      // H5: read epoch synchronously at message-parse time so frames from a
+      // prior subscription cycle are stamped with the old epoch and dropped.
+      const subs = getSubscriptionManager();
+      const epoch = subs?.getEpoch({ channel: 'book', symbol, depth }) ?? 0;
+
       for (const entry of bookMsg.data) {
         if (entry.symbol !== symbol) continue;
 
@@ -38,26 +43,13 @@ export function OrderBookProvider({ symbol, depth = 25, children }: OrderBookPro
         const asks = entry.asks.map(toLevel);
 
         if (bookMsg.type === 'snapshot') {
-          applySnapshot(symbol, bids, asks);
+          applySnapshot(symbol, bids, asks, epoch);
         } else {
-          applyUpdate(symbol, bids, asks, entry.checksum);
+          applyUpdate(symbol, bids, asks, entry.checksum, epoch);
         }
       }
     });
-  }, [symbol, applySnapshot, applyUpdate]);
-
-  // On mount, clear any stale 'resyncing' left by a previous HMR cycle. A
-  // stale 'resyncing' silently drops all applyUpdate calls in the store,
-  // freezing the book. Resetting to 'ok' lets the next real checksum failure
-  // retrigger the recovery flow cleanly.
-  useEffect(() => {
-    // Read current state at effect time (not from the render closure) to avoid
-    // the stale-closure problem. useOrderBookStore.getState() is safe here.
-    const current = useOrderBookStore.getState().checksumStatus.get(symbol);
-    if (current === 'resyncing') {
-      setChecksumStatus(symbol, 'ok');
-    }
-  }, [symbol, setChecksumStatus]);
+  }, [symbol, depth, applySnapshot, applyUpdate]);
 
   useEffect(() => {
     if (checksumStatus !== 'failed') return;
@@ -67,11 +59,11 @@ export function OrderBookProvider({ symbol, depth = 25, children }: OrderBookPro
 
     setChecksumStatus(symbol, 'resyncing');
 
-    // Send wire unsubscribe+subscribe without changing ref counts — the logical
-    // subscription from useChannelSubscription stays active (refCount >= 1),
-    // so a plain subscribe/unsub dance never drops to 0 and sends nothing.
-    // forceResync bypasses ref counting and directly sends the wire frames.
-    subs.forceResync({ channel: 'book', symbol, ...(depth !== undefined ? { depth } : {}) });
+    // H5: requestResync bumps the epoch BEFORE sending the unsubscribe wire
+    // frame. Any delta arriving after the bump carries the old epoch and will be
+    // dropped by the store. The new snapshot (arriving after the resub-ack)
+    // carries the new epoch and is accepted.
+    subs.requestResync({ channel: 'book', symbol, ...(depth !== undefined ? { depth } : {}) });
   }, [checksumStatus, symbol, depth, setChecksumStatus]);
 
   return (

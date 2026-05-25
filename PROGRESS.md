@@ -110,6 +110,68 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 | 4b.9 | Positions UI panel | done | nextjs-react-engineer | | PositionsPanel + PnlText; row-level subs; sign-aware color |
 | 4b.V | Verification checklist (incl. worked examples) | done | trading-domain-engineer + nextjs-react-engineer | | pnpm typecheck 0 errors |
 
+## Backlog — Money-Math Audit (L8, L9, H9)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| BM1 | L8: `feeBps` integer-guard + JSDoc caller contract | done | trading-domain-engineer | | integer-guard assertion; Decimal wrap rejected as overengineered for config param |
+| BM2 | L9: JSDoc on `FilledOrder.totalCost` (excludes fees) | done | trading-domain-engineer | | clarifies phase 6+ fee-inclusion intent |
+| BM3 | H9: Decimal-only comment in positions-store (deferred to phase 6+) | in-progress | trading-domain-engineer | | no number accumulator exists yet; comment lands now, code fix blocked on phase 6 fill aggregation |
+
+## Backlog — Performance (H7: O(N²) selector fix)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| BP1 | H7: remove O(N²) cumulative-depth work from `selectLevelDisplay`; hoist depth-pct into `OrderBook` `useMemo` | done | react-performance-engineer | | 6x p95 speedup (0.098ms → 0.016ms); `depthPct` removed from selector; `BookRow` receives prop |
+
+## Backlog — Subscription Reliability (H3/H4/H5/M9)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| B1 | H3: `req_id` ack correlation design | done | realtime-architect | | req_id sole correlator; unmatched acks discarded |
+| B2 | H4: `unsubscribing`/`queuedResubscribe` state machine design | done | realtime-architect | | entries persist through unsubscribing; releasePending dequeues on ack |
+| B3 | H5/M9: per-key monotonic epoch design | done | realtime-architect | | manager-owned epoch; stamped at parse time; O(1) reject in store |
+| B4 | H3/H4/H5 implementation | done | nextjs-react-engineer | | 71/71 tests pass; req_id at frame top-level; resubscribeAll multi-symbol ack mismatch benign |
+| B5 | Ack-watchdog timeout | pending | | | separate backlog ticket; not part of current trio |
+
+## Backlog — Cross-Cutting Hardening (post-Phase 5)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| BH0 | Planning: per-issue plans for H1, H2, H6, H8, M1–M11, L2–L11 | done | nextjs-react-engineer | | H3/H4/H5 blocked on architect; M2/M3 scope deferred; L3 dependent on H6 |
+| BH1a | H3/H4/H5 architecture review (impl deltas) | done | realtime-architect | | 4 deltas identified; req_id vs epoch invariant locked; 4 human decisions resolved |
+| BH1 | H1: connection-manager hardening | done | nextjs-react-engineer | | 92/92 tests pass; typecheck clean |
+| BH2 | H2: connection-manager hardening | done | nextjs-react-engineer | | implemented alongside H1 |
+| BH3 | H3/H4/H5 deltas: releasePending clear, watchdog (10s), reconnect-wipe, per-symbol resub, error-ack retry/failure, destroy() cleanup | done | nextjs-react-engineer | | wipePendingOnDisconnect fires on all non-open statuses; epoch double-bump fixed as side effect |
+| BH6 | H6: Suspense boundaries + skeletons (page.tsx stays Server Component) | done | nextjs-react-engineer | | browser verification (throttled network) deferred to human |
+| BH8 | H8: OrderBook rows keyed by rawPrice string | done | nextjs-react-engineer | | eliminates unmount/remount churn on depth changes |
+| BM1x | M1: in-place Map mutation in orderbook-store | done | nextjs-react-engineer | | eliminates per-tick clone |
+| BM2 | M2: de-duplicate hex values in globals.css (class names preserved) | done | nextjs-react-engineer | | conservative scope; class names unchanged |
+| BM3x | M3: CSS token conservative (--background/--foreground kept as plain CSS vars, not @theme inline) | done | nextjs-react-engineer | | human chose conservative scope to avoid cascade bleed |
+| BM4 | M4: CSS token / utility addition in globals.css | done | nextjs-react-engineer | | globals.css |
+| BM5 | M5: OrderEntry validation hardening | done | nextjs-react-engineer | | OrderEntry.tsx |
+| BM6 | M6: getBestBidPrice / getBestAskPrice on OrderBook; eliminates selector array allocation | done | nextjs-react-engineer | | orderbook.ts + CurrentPrice.tsx |
+| BM8 | M8: OrderEntry UX hardening | done | nextjs-react-engineer | | OrderEntry.tsx |
+| BM10 | M10: sendControl method on ConnectionManager + corrected buffer comment | done | nextjs-react-engineer | | connection-manager.ts |
+| BM11 | M11: arm pong deadline timer on visibility restore | done | nextjs-react-engineer | | connection-manager.ts |
+| BL2 | L2: layout.tsx className set statically from font CSS vars; no suppressHydrationWarning | done | nextjs-react-engineer | | layout.tsx |
+| BL3 | L3: route-level loading.tsx skeleton | done | nextjs-react-engineer | | src/app/loading.tsx (new file) |
+| BL4 | L4: OrderEntry.tsx update (L4 item) | done | nextjs-react-engineer | | OrderEntry.tsx |
+| BL5 | L5: selector comment (selectors.ts) | done | nextjs-react-engineer | | selectors.ts |
+| BL6 | L6: OrderEntry !&#61;&#61; null → !&#61; null fix (exactOptionalPropertyTypes) | done | nextjs-react-engineer | | self-caught; satisfies exactOptionalPropertyTypes on OrderRequest spread |
+| BL7 | L7: optional chain kept in candles-store; comment documents noUncheckedIndexedAccess requirement | done | nextjs-react-engineer | | candles-store.ts |
+| BL10 | L10: usePosition hook added to positions-store | done | nextjs-react-engineer | | positions-store.ts |
+| BL11 | L11: clarifying comment in connection-manager | done | nextjs-react-engineer | | connection-manager.ts |
+
+## Backlog — Candle Chart Bug (H10)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| BH10a | H10: diagnosis — ohlcDataSchema uses z.string(); Kraken WS v2 sends numbers; frames silently dropped at parse | done | realtime-architect | | root cause confirmed; console.debug → console.warn; fix scoped to schema change only |
+| BH10b | H10: fix — change ohlcDataSchema fields to z.number(); upgrade parse-failure log to console.warn | done | nextjs-react-engineer | | 96→99 tests; regression guard added; browser verification of live candle mutation still owed |
+| BM13 | M13: per-interval handler routing in use-candles.ts | pending | | | surfaced as out-of-scope by H10 diagnosis; filed as separate ticket |
+| BH11 | H11: chart price-axis vs. header price ~10c gap — verdict: not a bug (best bid vs. last trade); header label recommendation pending human decision | done | realtime-architect + nextjs-react-engineer | | CurrentPrice rewritten: labeled Bid/Ask/Spread; selector boundary conversions; bidAskSpreadEqual comparator; 99/99 tests pass |
+
 ## Phase 5 — Testing, A11y, Polish, Deploy
 
 | # | Step | Status | Agent | Commit | Notes |

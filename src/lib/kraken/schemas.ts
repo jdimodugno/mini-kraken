@@ -91,42 +91,54 @@ const subscribeResultSchema = z
   })
   .passthrough();
 
-export const subscribeAckSchema = z.object({
-  method: z.literal("subscribe"),
-  success: z.boolean(),
-  result: subscribeResultSchema,
-  time_in: z.string(),
-  time_out: z.string(),
-  // `error` is present when success === false
-  error: z.string().optional(),
-});
+// req_id is echoed back by Kraken on sub/unsub acks; it is the sole correlator
+// for matching acks to pending requests. .passthrough() preserves any extra
+// fields Kraken may add to these responses in future API revisions.
+export const subscribeAckSchema = z
+  .object({
+    method: z.literal("subscribe"),
+    success: z.boolean(),
+    result: subscribeResultSchema,
+    time_in: z.string(),
+    time_out: z.string(),
+    // `error` is present when success === false
+    error: z.string().optional(),
+    req_id: z.number().optional(),
+  })
+  .passthrough();
 
-export const unsubscribeAckSchema = z.object({
-  method: z.literal("unsubscribe"),
-  success: z.boolean(),
-  result: subscribeResultSchema,
-  time_in: z.string(),
-  time_out: z.string(),
-  error: z.string().optional(),
-});
+export const unsubscribeAckSchema = z
+  .object({
+    method: z.literal("unsubscribe"),
+    success: z.boolean(),
+    result: subscribeResultSchema,
+    time_in: z.string(),
+    time_out: z.string(),
+    error: z.string().optional(),
+    req_id: z.number().optional(),
+  })
+  .passthrough();
 
 // ---------------------------------------------------------------------------
 // OHLC channel messages
 // ---------------------------------------------------------------------------
 
-const ohlcDataSchema = z.object({
-  symbol: z.string(),
-  open: z.string(),
-  high: z.string(),
-  low: z.string(),
-  close: z.string(),
-  volume: z.string(),
-  vwap: z.string(),
-  trades: z.number(),
-  interval_begin: z.string(),
-  interval: z.number(),
-  timestamp: z.string(),
-});
+const ohlcDataSchema = z
+  .object({
+    symbol: z.string(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number(),
+    vwap: z.number(),
+    trades: z.number(),
+    interval_begin: z.string(),
+    interval: z.number(),
+    // Kraken deprecated this field; absent on update frames.
+    timestamp: z.string().optional(),
+  })
+  .passthrough();
 
 export const ohlcMessageSchema = z.object({
   channel: z.literal("ohlc"),

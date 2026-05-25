@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { OrderBookShell } from '@/components/OrderBookShell';
 import { ChartShell } from '@/components/chart/ChartShell';
 import { TradingPanel } from '@/components/trading/TradingPanel';
@@ -30,22 +31,36 @@ export default function Home() {
         {/* Main area */}
         <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
           {/* Left: Chart + bottom tabs */}
-          <div className="flex flex-col min-h-0">
-            <div className="h-[50vh] min-h-0 shrink-0">
-              <ChartShell symbol={SYMBOL} />
+          <Suspense fallback={
+            <div className="flex flex-col min-h-0">
+              <div className="h-[50vh] min-h-0 shrink-0 bg-zinc-900 animate-pulse" />
+              <div className="flex-1 bg-zinc-950 animate-pulse" />
             </div>
-            <BottomTabs />
-          </div>
+          }>
+            <div className="flex flex-col min-h-0">
+              <div className="h-[50vh] min-h-0 shrink-0">
+                <ChartShell symbol={SYMBOL} />
+              </div>
+              <BottomTabs />
+            </div>
+          </Suspense>
 
           {/* Right: Order book + Order entry */}
-          <div className="flex flex-col min-h-0 overflow-hidden bg-zinc-900">
-            <div className="shrink-0 border-b border-zinc-800">
-              <OrderBookShell symbol={SYMBOL} />
+          <Suspense fallback={
+            <div className="flex flex-col min-h-0 overflow-hidden bg-zinc-900">
+              <div className="flex-1 animate-pulse bg-zinc-900" />
+              <div className="h-48 animate-pulse bg-zinc-800 border-t border-zinc-700" />
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <TradingPanel symbol={SYMBOL} />
+          }>
+            <div className="flex flex-col min-h-0 overflow-hidden bg-zinc-900">
+              <div className="shrink-0 border-b border-zinc-800">
+                <OrderBookShell symbol={SYMBOL} />
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <TradingPanel symbol={SYMBOL} />
+              </div>
             </div>
-          </div>
+          </Suspense>
         </div>
       </div>
     </main>

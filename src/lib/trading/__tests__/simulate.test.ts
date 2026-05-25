@@ -132,4 +132,27 @@ describe('simulateMarketOrder', () => {
       expect(simulateMarketOrder('buy', new Decimal(0), book, FEE_BPS)).toBeNull();
     });
   });
+
+  describe('feeBps validation', () => {
+    it('throws when feeBps is a float', () => {
+      const book = makeBook([], [level('50000', '1')]);
+      expect(() => simulateMarketOrder('buy', new Decimal(1), book, 25.5)).toThrow(
+        /feeBps must be a non-negative integer/,
+      );
+    });
+
+    it('throws when feeBps is negative', () => {
+      const book = makeBook([], [level('50000', '1')]);
+      expect(() => simulateMarketOrder('buy', new Decimal(1), book, -1)).toThrow(
+        /feeBps must be a non-negative integer/,
+      );
+    });
+
+    it('accepts feeBps of zero', () => {
+      const book = makeBook([], [level('50000', '1')]);
+      const result = simulateMarketOrder('buy', new Decimal(1), book, 0);
+      expect(result).not.toBeNull();
+      expect(result!.totalFee.toNumber()).toBe(0);
+    });
+  });
 });

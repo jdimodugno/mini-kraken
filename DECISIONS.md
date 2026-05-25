@@ -371,3 +371,67 @@ The UI must surface `degraded` state visibly (banner, status indicator). Silent 
 **Trade-offs accepted:** Minor visual noise on the rare checksum failure + resync path. Worth it.
 
 **What would change my mind:** User research showing the indicator causes more confusion than it prevents.
+
+---
+
+## Decision: req_id is the sole correlator for sub/unsub acks (H3)
+
+**Date:** 2026-05-25
+**Status:** accepted
+
+**Context:** The previous ack handler scanned all subscriptions looking for a matching `(channel, symbol)` pair. With multiple subscriptions for the same channel and symbol (e.g. `book/BTC/USD` at depth=10 and depth=25), the scan was O(n) and matched the wrong entry when acks arrived out of order.
+
+**Alternatives considered:**
+- Scan by `(channel, symbol)` — O(n), matches wrong entry for same-channel/different-depth subs
+- Correlate by `req_id` — O(1) `Map.get`; unambiguous even with duplicate channel/symbol at different depths
+
+**Choice:** `SubscriptionManager` carries a monotonic `nextReqId` counter. Every outbound `subscribe`/`unsubscribe` frame carries a fresh `req_id`. Ack lookup is `pendingRequests.get(req_id)` — no scan.
+
+**Why:** Correct O(1) ack routing. Eliminates the wrong-entry-on-out-of-order-ack bug class.
+
+**Trade-offs accepted:** `req_id` must be threaded through to Kraken's wire frame; the protocol layer (`KrakenClient.subscribe/unsubscribe`) now accepts an optional `req_id` param. Minimal surface change.
+
+**What would change my mind:** A Kraken API revision that stops echoing `req_id` on acks (currently documented behavior).
+
+---
+
+## Decision: Subscription entries persist through `unsubscribing`; deletion only after unsub-ack with no queued resub (H4)
+
+**Date:** 2026-05-25
+**Status:** accepted
+
+**Context:** The old implementation deleted the subscription entry immediately in `releaseSubscription`, then sent the unsubscribe frame. If a component re-mounted before the ack arrived, a new entry was created and a second subscribe was sent — causing a double-subscribe race.
+
+**Alternatives considered:**
+- Delete immediately on release, re-create on re-mount — double-subscribe race; no way to detect in-flight unsub
+- Keep entry through the full unsubscribing phase; use `queuedResubscribe` flag to defer the new subscribe until after the ack
+
+**Choice:** Entries are never deleted at release time. The `Phase` discriminated union (`subscribing | subscribed | unsubscribing | idle`) tracks the exact lifecycle. Deletion happens only in `handleUnsubAck` when `queuedResubscribe` is false.
+
+**Why:** The entry is the authority on in-flight state. Deleting it prematurely destroys the only record of the pending unsubscribe, making it impossible to coalesce a re-subscribe correctly.
+
+**Trade-offs accepted:** The subscription map holds entries in `unsubscribing` state temporarily. A leaked `unsubscribing` entry (e.g. ack never arrives) would hold memory indefinitely. Mitigated by the planned M12 ack-watchdog.
+
+**What would change my mind:** M12 ack-watchdog reveals a systematic ack-drop pattern that requires a different recovery strategy.
+
+---
+
+## Decision: Per-(channel, symbol, depth) monotonic epoch owned by SubscriptionManager is the cross-epoch frame-isolation boundary (H5 + M9)
+
+**Date:** 2026-05-25
+**Status:** accepted
+
+**Context:** After a checksum failure, the old `resyncing` gate in `applyUpdate` silently dropped all deltas. This worked only if no delta for the old subscription arrived after the `resyncing` flag was set and before the new snapshot arrived. HMR cycles could leave a stale `resyncing` flag that froze the book permanently.
+
+**Alternatives considered:**
+- `resyncing` boolean gate in store — HMR-unsafe; one stale flag freezes the book
+- Per-frame sequence numbers from Kraken — Kraken WS v2 does not provide per-symbol sequence numbers on book frames
+- Monotonic epoch per subscription key, bumped on every wire-level subscribe — owner is `SubscriptionManager` (which controls when subscribes fire); consumer (store) drops frames with non-matching epoch
+
+**Choice:** `SubscriptionManager` owns `epochs: Map<ChannelKey, number>`. Epoch bumps on every `sendSubscribe` (initial, queued resub, reconnect resubscribeAll) — not on refCount fan-out. `OrderBookProvider` reads `getEpoch()` synchronously before calling store actions. Store drops: (a) snapshots with `epoch < current`, (b) updates with `epoch !== current`. `resyncing` is now UX-only — it signals "resync in flight" to the UI but does not gate store mutations.
+
+**Why:** Epoch is set by the only layer that controls subscribe wire frames. Any delta or snapshot carrying an epoch that doesn't match the current live subscription is unambiguously stale and can be dropped before touching the OrderBook instance. HMR cycles produce no stale flag — the epoch is a number, not a boolean, and it is only bumped by deliberate subscribe sends.
+
+**Trade-offs accepted:** `OrderBookProvider` must read the epoch synchronously on every book message (one `Map.get` call). Negligible on the hot path.
+
+**What would change my mind:** A Kraken API revision that provides per-symbol sequence numbers directly in book frames, making a client-side epoch redundant.

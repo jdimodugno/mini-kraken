@@ -6,8 +6,6 @@
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -22,7 +20,6 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 /* Order book layout */
@@ -34,17 +31,17 @@ body {
 
 .order-book-syncing {
   text-align: center;
-  color: #f59e0b;
+  color: theme(colors.amber.400);
   font-size: 0.7rem;
   padding: 2px 0;
 }
 
 .order-book-spread {
   text-align: center;
-  color: #9ca3af;
+  color: theme(colors.gray.400);
   padding: 4px 0;
-  border-top: 1px solid #374151;
-  border-bottom: 1px solid #374151;
+  border-top: 1px solid theme(colors.gray.700);
+  border-bottom: 1px solid theme(colors.gray.700);
   margin: 2px 0;
 }
 
@@ -71,13 +68,13 @@ body {
   pointer-events: none;
 }
 
-.book-row-bid::before { background: #22c55e; right: 0; }
-.book-row-ask::before { background: #ef4444; left: 0; }
+.book-row-bid::before { background: theme(colors.green.500); right: 0; }
+.book-row-ask::before { background: theme(colors.red.500); left: 0; }
 
-.book-row-bid .book-row-price { color: #22c55e; }
-.book-row-ask .book-row-price { color: #ef4444; }
+.book-row-bid .book-row-price { color: theme(colors.green.500); }
+.book-row-ask .book-row-price { color: theme(colors.red.500); }
 
-.book-row-qty { color: #d1d5db; }
+.book-row-qty { color: theme(colors.gray.300); }
 
 /* Flash animation — imperative, no React state */
 @keyframes book-row-flash {

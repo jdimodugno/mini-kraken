@@ -43,11 +43,11 @@ export function useCandles(symbol: string, interval: Interval): readonly Candle[
             { symbol, interval },
             {
               time,
-              open: parseFloat(d.open),
-              high: parseFloat(d.high),
-              low: parseFloat(d.low),
-              close: parseFloat(d.close),
-              volume: parseFloat(d.volume),
+              open: d.open,
+              high: d.high,
+              low: d.low,
+              close: d.close,
+              volume: d.volume,
             },
           );
         }
