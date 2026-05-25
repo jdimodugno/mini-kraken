@@ -172,6 +172,12 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 | BM13 | M13: per-interval handler routing in use-candles.ts | pending | | | surfaced as out-of-scope by H10 diagnosis; filed as separate ticket |
 | BH11 | H11: chart price-axis vs. header price ~10c gap — verdict: not a bug (best bid vs. last trade); header label recommendation pending human decision | done | realtime-architect + nextjs-react-engineer | | CurrentPrice rewritten: labeled Bid/Ask/Spread; selector boundary conversions; bidAskSpreadEqual comparator; 99/99 tests pass |
 
+## Backlog — UX/UI Iteration (H12)
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| BH12 | H12: layout rework — top AssetInfoBar, 3-col grid (chart\|book\|right rail), full-width bottom tabs | done | nextjs-react-engineer | | 99/99 tests pass; 24h widgets mocked; browser verification owed by human |
+
 ## Phase 5 — Testing, A11y, Polish, Deploy
 
 | # | Step | Status | Agent | Commit | Notes |

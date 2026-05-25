@@ -7,9 +7,5 @@ interface TradingPanelProps {
 }
 
 export function TradingPanel({ symbol }: TradingPanelProps) {
-  return (
-    <div className="h-full overflow-y-auto">
-      <OrderEntry symbol={symbol} />
-    </div>
-  );
+  return <OrderEntry symbol={symbol} />;
 }

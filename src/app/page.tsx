@@ -3,64 +3,76 @@ import { OrderBookShell } from '@/components/OrderBookShell';
 import { ChartShell } from '@/components/chart/ChartShell';
 import { TradingPanel } from '@/components/trading/TradingPanel';
 import { BottomTabs } from '@/components/trading/BottomTabs';
-import { CurrentPrice } from '@/components/CurrentPrice';
-import { ConnectionStatusDot } from '@/components/ConnectionStatusDot';
+import { AssetInfoBar } from '@/components/AssetInfoBar';
+import { PortfolioPlaceholder } from '@/components/PortfolioPlaceholder';
 
 const SYMBOL = 'BTC/USD';
 
 export default function Home() {
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* App title bar — full width, above the content container */}
+      {/* App title bar — full width, above content container */}
       <div className="w-full bg-zinc-900 border-b border-zinc-800 px-6 h-9 flex items-center">
         <span className="text-sm font-semibold tracking-wide text-zinc-100">MiniKraken</span>
       </div>
 
-      <div className="max-w-[1280px] mx-auto flex flex-col" style={{ height: 'calc(100vh - 2.25rem)' }}>
-        {/* Symbol / price header */}
-        <header className="h-10 flex items-center gap-4 px-4 border-b border-zinc-800 shrink-0">
-          <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest">
-            {SYMBOL}
-          </span>
-          <CurrentPrice symbol={SYMBOL} />
-          <div className="ml-auto">
-            <ConnectionStatusDot />
+      {/* Content container */}
+      <div
+        className="max-w-[1600px] mx-auto p-4 flex flex-col gap-3"
+        style={{ minHeight: 'calc(100vh - 2.25rem)' }}
+      >
+        {/* Top bar: asset info — full width */}
+        <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 shrink-0">
+          <AssetInfoBar symbol={SYMBOL} />
+        </div>
+
+        {/* Main 3-column grid */}
+        <div className="grid grid-cols-[1fr_280px_320px] gap-3 min-h-0 flex-1">
+          {/* Column 1: Chart */}
+          <Suspense
+            fallback={
+              <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 animate-pulse min-h-[420px]" />
+            }
+          >
+            <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 overflow-hidden min-h-[420px]">
+              <ChartShell symbol={SYMBOL} />
+            </div>
+          </Suspense>
+
+          {/* Column 2: Order Book */}
+          <Suspense
+            fallback={
+              <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 animate-pulse" />
+            }
+          >
+            <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 overflow-hidden">
+              <OrderBookShell symbol={SYMBOL} />
+            </div>
+          </Suspense>
+
+          {/* Column 3: Right rail — Order Entry + Portfolio */}
+          <div className="flex flex-col gap-3 min-h-0">
+            <Suspense
+              fallback={
+                <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 animate-pulse flex-1" />
+              }
+            >
+              <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 overflow-hidden">
+                <div className="p-3">
+                  <TradingPanel symbol={SYMBOL} />
+                </div>
+              </div>
+            </Suspense>
+
+            <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 overflow-hidden">
+              <PortfolioPlaceholder />
+            </div>
           </div>
-        </header>
+        </div>
 
-        {/* Main area */}
-        <div className="flex-1 grid grid-cols-[1fr_280px] min-h-0">
-          {/* Left: Chart + bottom tabs */}
-          <Suspense fallback={
-            <div className="flex flex-col min-h-0">
-              <div className="h-[50vh] min-h-0 shrink-0 bg-zinc-900 animate-pulse" />
-              <div className="flex-1 bg-zinc-950 animate-pulse" />
-            </div>
-          }>
-            <div className="flex flex-col min-h-0">
-              <div className="h-[50vh] min-h-0 shrink-0">
-                <ChartShell symbol={SYMBOL} />
-              </div>
-              <BottomTabs />
-            </div>
-          </Suspense>
-
-          {/* Right: Order book + Order entry */}
-          <Suspense fallback={
-            <div className="flex flex-col min-h-0 overflow-hidden bg-zinc-900">
-              <div className="flex-1 animate-pulse bg-zinc-900" />
-              <div className="h-48 animate-pulse bg-zinc-800 border-t border-zinc-700" />
-            </div>
-          }>
-            <div className="flex flex-col min-h-0 overflow-hidden bg-zinc-900">
-              <div className="shrink-0 border-b border-zinc-800">
-                <OrderBookShell symbol={SYMBOL} />
-              </div>
-              <div className="flex-1 overflow-y-auto p-4">
-                <TradingPanel symbol={SYMBOL} />
-              </div>
-            </div>
-          </Suspense>
+        {/* Bottom row: full-width tabs */}
+        <div className="rounded-lg bg-zinc-900/60 border border-zinc-800 shrink-0">
+          <BottomTabs />
         </div>
       </div>
     </main>

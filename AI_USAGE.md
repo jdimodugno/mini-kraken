@@ -341,6 +341,17 @@ Group entries under phase headings (`## Phase 2a — Order Book Data`). New phas
 - **Human correction:** Accepted as-is.
 - **Files touched:** `src/components/CurrentPrice.tsx`
 
+## Backlog — UX/UI Iteration (H12: Layout Rework)
+
+### 2026-05-25 — BACKLOG H12: layout rework to top asset-info bar + 3-column grid + full-width bottom tabs
+
+- **Agent:** nextjs-react-engineer (sonnet)
+- **Task:** Rewrite `page.tsx` to a top asset-info bar + 3-column main grid (chart | order book | right rail) + full-width bottom tabs, with new `AssetInfoBar` and `PortfolioPlaceholder` components per user screenshot.
+- **What AI got right:** Full rewrite of `page.tsx` landed cleanly: `max-w-[1600px] mx-auto p-4 flex-col gap-3` container, `grid-cols-[1fr_280px_320px]` main grid, right rail stacking `OrderEntry` + `Portfolio` in `flex-col gap-3`. Card wrapping (`rounded-lg bg-zinc-900/60 border border-zinc-800`) applied consistently. Existing `<Suspense>` boundaries preserved around Chart, OrderBook, and TradingPanel columns. `AssetInfoBar.tsx` (client component): symbol + Bid/Ask/Spread (reusing `CurrentPrice`) on the left, mocked 24h widgets (Change %, High, Low, Volume) in the middle, `ConnectionStatusDot` + utility placeholder on the right — `MOCK_24H` constant annotated with explicit `// MOCK — phase 6+ will wire to Kraken WS ticker channel` comment. `PortfolioPlaceholder.tsx` (server component, no hooks): "Coming soon · Phase 6+" tag, 4 mocked preview rows (Equity, Available, Unrealized P&L, Today's P&L) styled like real values. Minor `TradingPanel.tsx` adjustment: inner `overflow-y-auto` wrapper removed since parent card now handles scroll. `pnpm typecheck` clean; 99/99 tests pass.
+- **What AI got wrong:** Nothing notable.
+- **Human correction:** Accepted as-is. Manual browser verification owed by human. 24h widgets mocked by explicit user decision (no Kraken ticker subscription filed as follow-up).
+- **Files touched:** `src/app/page.tsx`, `src/components/AssetInfoBar.tsx` (new), `src/components/PortfolioPlaceholder.tsx` (new), `src/components/trading/TradingPanel.tsx`
+
 ### 2026-05-25 — Install Claude Code skills for nextjs-react-engineer
 
 - **Agent:** orchestrator (direct work, no skill agent)
