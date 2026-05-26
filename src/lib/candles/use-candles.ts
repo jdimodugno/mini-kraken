@@ -33,11 +33,14 @@ export function useCandles(symbol: string, interval: Interval): readonly Candle[
     const client = getKrakenClient();
     let unsub: (() => void) | undefined;
     if (client !== null) {
+      const expectedIntervalMinutes = INTERVAL_MINUTES[interval];
       unsub = client.onMessage((msg: KrakenMessage) => {
         if (!('channel' in msg) || msg.channel !== 'ohlc') return;
         const ohlcMsg = msg as OhlcMessage;
         for (const d of ohlcMsg.data) {
           if (d.symbol !== symbol) continue;
+          // Kraken sends interval as minutes; filter out updates from other intervals
+          if (d.interval !== expectedIntervalMinutes) continue;
           const time = Math.floor(new Date(d.interval_begin).getTime() / 1000);
           applyLiveUpdate(
             { symbol, interval },

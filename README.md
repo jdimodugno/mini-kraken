@@ -1,36 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MiniKraken
+
+A real-time cryptocurrency trading UI built for Senior Frontend Engineer interview preparation. Connects to Kraken's WebSocket v2 API for live order book and candlestick data, with a local order simulation engine.
+
+## Features
+
+- **Real-time Order Book** — Live bid/ask depth with CRC32 checksum verification and automatic resync on mismatch
+- **Candlestick Charts** — Historical + live OHLC data via REST/WS handoff using lightweight-charts
+- **Order Simulation** — Market and limit order placement with simulated fills against the live book
+- **P&L Tracking** — Position management with realized/unrealized P&L using `decimal.js` for precision
+- **Connection Resilience** — Exponential backoff, heartbeat monitoring, and degraded-state recovery
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) + React 19 |
+| Language | TypeScript (strict mode) |
+| State | Zustand 5 with row-level subscriptions |
+| Styling | Tailwind CSS 4 |
+| Charts | lightweight-charts v5 |
+| Validation | Zod 4 |
+| Precision | decimal.js (banker's rounding) |
+| Testing | Vitest + React Testing Library + Playwright |
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Install dependencies
+pnpm install
+
+# Start development server
 pnpm dev
-# or
-bun dev
+
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm dev          # Start dev server
+pnpm build        # Production build
+pnpm start        # Start production server
+pnpm typecheck    # TypeScript check
+pnpm lint         # ESLint
+pnpm test         # Run unit tests
+pnpm test:watch   # Run tests in watch mode
+pnpm test:e2e     # Run Playwright E2E tests
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Architecture
 
-## Learn More
+```
+Kraken WS v2 server
+    ↓ (raw frames, ~10-50/sec)
+ConnectionManager (transport layer)
+    ↓ (typed, validated messages)
+KrakenClient + SubscriptionManager (protocol layer)
+    ↓ (domain events)
+Zustand stores (order book, candles, positions)
+    ↓ (selectors)
+React components (row-level subscriptions)
+    ↓ (user actions)
+Order simulation engine
+    ↓ (fills)
+Position + P&L tracking
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/              # Next.js App Router pages
+├── components/       # React components
+├── lib/
+│   ├── kraken/       # WebSocket + Kraken protocol
+│   ├── candles/      # OHLC data fetching
+│   ├── money/        # Decimal utilities
+│   └── trading/      # Order simulation + P&L
+└── stores/           # Zustand state stores
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Key Design Decisions
 
-## Deploy on Vercel
+See [`DECISIONS.md`](./DECISIONS.md) for 22 documented architectural decisions covering:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- WebSocket connection lifecycle and resilience
+- Order book checksum verification and resync strategy
+- Decimal precision throughout the money path
+- Row-level React subscriptions for performance
+- Subscription correlation via `req_id` for reliability
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development Notes
+
+- **Strict TypeScript**: `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` enabled
+- **No number for money**: All prices/quantities use `Decimal` until the display boundary
+- **Performance measured**: `performance.mark` instrumentation; rAF batching deferred until measured need
+- **Kraken WS v2**: Uses the newer v2 API with discriminated union message schemas
+
+## Mock Data
+
+The following are intentionally mocked (real implementation would require API keys):
+
+- 24h change/high/low/volume in `AssetInfoBar` — uses static values
+- Portfolio equity panel — placeholder pending account integration
+- Taker fee — hardcoded at 26 bps
+
+## License
+
+Private project for interview preparation.

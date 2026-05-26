@@ -132,7 +132,7 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 | B2 | H4: `unsubscribing`/`queuedResubscribe` state machine design | done | realtime-architect | | entries persist through unsubscribing; releasePending dequeues on ack |
 | B3 | H5/M9: per-key monotonic epoch design | done | realtime-architect | | manager-owned epoch; stamped at parse time; O(1) reject in store |
 | B4 | H3/H4/H5 implementation | done | nextjs-react-engineer | | 71/71 tests pass; req_id at frame top-level; resubscribeAll multi-symbol ack mismatch benign |
-| B5 | Ack-watchdog timeout | pending | | | separate backlog ticket; not part of current trio |
+| B5 | Ack-watchdog timeout | done | nextjs-react-engineer | | shipped under BH3; ACK_TIMEOUT_MS=10000 watchdog |
 
 ## Backlog — Cross-Cutting Hardening (post-Phase 5)
 
@@ -169,7 +169,7 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 |---|---|---|---|---|---|
 | BH10a | H10: diagnosis — ohlcDataSchema uses z.string(); Kraken WS v2 sends numbers; frames silently dropped at parse | done | realtime-architect | | root cause confirmed; console.debug → console.warn; fix scoped to schema change only |
 | BH10b | H10: fix — change ohlcDataSchema fields to z.number(); upgrade parse-failure log to console.warn | done | nextjs-react-engineer | | 96→99 tests; regression guard added; browser verification of live candle mutation still owed |
-| BM13 | M13: per-interval handler routing in use-candles.ts | pending | | | surfaced as out-of-scope by H10 diagnosis; filed as separate ticket |
+| BM13 | M13: interval check in use-candles.ts (prevents cross-contamination in multi-Chart scenarios) | done | nextjs-react-engineer | | added d.interval !== expectedIntervalMinutes guard in OHLC update handler |
 | BH11 | H11: chart price-axis vs. header price ~10c gap — verdict: not a bug (best bid vs. last trade); header label recommendation pending human decision | done | realtime-architect + nextjs-react-engineer | | CurrentPrice rewritten: labeled Bid/Ask/Spread; selector boundary conversions; bidAskSpreadEqual comparator; 99/99 tests pass |
 
 ## Backlog — UX/UI Iteration (H12)
@@ -187,12 +187,12 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 | 5.3 | Position math unit tests (incl. flip case) | done | qa-test-engineer | | 13 tests; all 3 applyFillToPosition cases incl. flip |
 | 5.4 | Simulator unit tests | done | qa-test-engineer | | 12 tests; Decimal throughout; partial-fill and slippage cases |
 | 5.5 | OrderEntry component tests (RTL) | done | qa-test-engineer | | 13 tests; a11y bug in OrderEntry.tsx fixed (htmlFor/id); warning-visible not button-disabled for insufficient liquidity |
-| 5.6 | Playwright E2E smoke test | pending | | | |
-| 5.7 | A11y: debounced aria-live, sr-only ticker | pending | | | |
-| 5.8 | Keyboard navigation pass | pending | | | |
-| 5.9 | Color/contrast + non-color signals | pending | | | |
+| 5.6 | Playwright E2E smoke test | done | qa-test-engineer | | 2 tests: core UI load, order type toggle |
+| 5.7 | A11y: debounced aria-live, sr-only ticker | done | nextjs-react-engineer | | 1.5s debounced aria-live in CurrentPrice; .sr-only utility |
+| 5.8 | Keyboard navigation pass | done | nextjs-react-engineer | | :focus-visible styles; blue focus rings |
+| 5.9 | Color/contrast + non-color signals | done | nextjs-react-engineer | | PnlText arrows/prefixes alongside color |
 | 5.10 | Lighthouse pass (≥90 perf, 100 a11y) | pending | | | |
-| 5.11 | README polish | pending | | | |
-| 5.12 | DECISIONS.md final (≥10 entries) | pending | | | |
+| 5.11 | README polish | done | orchestrator | | comprehensive rewrite from boilerplate |
+| 5.12 | DECISIONS.md final (≥10 entries) | done | orchestrator | | 22 entries verified |
 | 5.13 | AI_USAGE.md final review | pending | | | |
 | 5.V | Verification checklist | pending | | | |

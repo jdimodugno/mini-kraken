@@ -85,3 +85,27 @@ body {
 .book-row-flash {
   animation: book-row-flash 250ms ease-out forwards;
 }
+
+/* Accessibility: screen-reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Accessibility: visible focus rings */
+:focus-visible {
+  outline: 2px solid theme(colors.blue.500);
+  outline-offset: 2px;
+}
+
+/* Remove default focus for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
