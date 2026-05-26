@@ -14,6 +14,9 @@ export function useMarketOrderPreview(
   // Subscribe to lastUpdateAt for reactivity — re-runs memo when book changes.
   const lastUpdate = useOrderBookStore((s) => s.lastUpdateAt.get(symbol) ?? 0);
 
+  // Extract size string for dependency array (ESLint requires simple expressions)
+  const sizeStr = size?.toString() ?? null;
+
   return useMemo(() => {
     if (size === null || size.lte(0)) return null;
 
@@ -22,5 +25,5 @@ export function useMarketOrderPreview(
 
     return simulateMarketOrder(side, size, book, 26); // 0.26% taker fee
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [symbol, side, size?.toString(), lastUpdate]);
+  }, [symbol, side, sizeStr, lastUpdate]);
 }

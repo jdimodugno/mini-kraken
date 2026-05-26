@@ -1,0 +1,13 @@
+# Branch guard: prevent direct commits to main
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" = "main" ]; then
+  echo "ERROR: Direct commits to 'main' are not allowed."
+  echo "Create a feature branch: git checkout -b feature/your-feature"
+  exit 1
+fi
+
+# Run lint-staged (lint on staged files only)
+pnpm exec lint-staged
+
+# Run typecheck (needs full project context)
+pnpm typecheck

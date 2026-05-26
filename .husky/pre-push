@@ -1,0 +1,2 @@
+# Run full test suite before push
+pnpm test
