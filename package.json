@@ -2,6 +2,9 @@
   "name": "mini-kraken",
   "version": "0.1.0",
   "private": true,
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --max-warnings 0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prepare": "husky"
   },
   "dependencies": {
     "@aws-crypto/crc32": "^5.2.0",
@@ -35,7 +39,9 @@
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.0.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.7"

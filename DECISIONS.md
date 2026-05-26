@@ -435,3 +435,86 @@ The UI must surface `degraded` state visibly (banner, status indicator). Silent 
 **Trade-offs accepted:** `OrderBookProvider` must read the epoch synchronously on every book message (one `Map.get` call). Negligible on the hot path.
 
 **What would change my mind:** A Kraken API revision that provides per-symbol sequence numbers directly in book frames, making a client-side epoch redundant.
+
+---
+
+## Decision: GitHub Actions + Vercel for CI/CD
+
+**Date:** 2026-05-26
+**Status:** accepted
+
+**Context:** Phase 5 delivered a working, tested application. Phase 6 addresses the "works on my machine" gap — demonstrating production-readiness thinking expected of senior engineers. The project needs: (1) automated CI to gate merges, (2) automated deployment to a public URL for demo purposes.
+
+**Alternatives considered:**
+
+*CI Platform:*
+- GitHub Actions — native to GitHub, free for public repos, excellent Next.js ecosystem support, YAML-based config
+- GitLab CI — requires GitLab hosting or mirroring; overkill for a single-repo project
+- CircleCI / Travis — additional account setup; no advantage over GH Actions for this use case
+- Self-hosted (Jenkins, etc.) — infrastructure overhead; inappropriate for a demo project
+
+*Deployment Platform:*
+- Vercel — built by Next.js creators; zero-config for Next.js apps; preview deploys on every PR; free tier sufficient
+- Netlify — good for static sites; Next.js support exists but not native; extra config for App Router features
+- AWS Amplify — more complex setup; overkill for demo; cost considerations
+- Self-hosted (Docker, k8s) — demonstrates ops skills but scope creep for an interview prep project
+
+**Choice:** GitHub Actions for CI, Vercel for deployment.
+
+**Why:**
+1. **Path of least resistance for Next.js** — Vercel's integration is seamless; no build config needed.
+2. **Industry standard pairing** — GH Actions + Vercel is the canonical choice for modern Next.js projects; demonstrates awareness of ecosystem norms.
+3. **Interview signal** — shows the candidate thinks about CI/CD as part of "done", not an afterthought.
+4. **Free tier sufficient** — no cost for a public demo project.
+5. **Preview deploys** — every PR gets a live URL, enabling async review without local setup.
+
+**Trade-offs accepted:**
+- Vendor lock-in to Vercel's deployment model — acceptable for a demo; migration path exists if needed.
+- GitHub-centric workflow — fine since the repo is already on GitHub.
+- Minimal CI scope (typecheck → lint → test → build) — Playwright E2E and Lighthouse budget checks deferred to avoid complexity; noted as "first iteration" in docs.
+
+**What would change my mind:**
+- If the project needed SSR edge functions or middleware features that Vercel's free tier doesn't support.
+- If the repo moved to GitLab or self-hosted Git, GitLab CI would become the natural choice.
+- If enterprise deployment requirements emerged (SOC2, private VPC), AWS/GCP would be reconsidered.
+
+---
+
+## Decision: GitHub Flow over Git Flow
+
+**Date:** 2026-05-26
+**Status:** accepted
+
+**Context:** Needed a branching strategy for the project. The initial proposal was Git Flow (long-lived `main` + `develop` branches, feature branches merge to `develop`, only `develop` merges to `main`). This is a well-known model but adds complexity.
+
+**Alternatives considered:**
+
+- **Git Flow** (`main` + `develop`) — pros: clear staging vs production separation, batched releases; cons: double merge friction (feature → develop → main), drift risk between branches, overkill for single-developer/small-team projects
+- **GitHub Flow** (`main` only) — pros: simpler (one long-lived branch), every PR is a staging environment via Vercel preview deploys, continuous deployment; cons: no explicit "release candidate" stage
+
+**Choice:** GitHub Flow with branch protection on `main`.
+
+**Why:**
+1. **Vercel preview deploys replace `develop`** — every PR gets a live preview URL, serving as staging.
+2. **Less friction** — features go directly to `main` via PR, no intermediate branch.
+3. **Industry norm** — GitHub, Netflix, Shopify use trunk-based development.
+4. **Right-sized for the project** — solo/small team, continuous deployment, no versioned releases.
+
+**Branch protection rules on `main`:**
+- Require pull request (no direct push)
+- Require CI status checks to pass (`Typecheck, Lint, Test, Build`)
+- Dismiss stale reviews on new commits
+- No force pushes, no deletions
+
+**Local enforcement (Husky):**
+- `pre-commit`: blocks commits on `main`, runs lint-staged + typecheck
+- `pre-push`: runs full test suite
+
+**Trade-offs accepted:**
+- No explicit "release candidate" stage — acceptable since every PR preview serves this purpose.
+- Hotfixes follow the same path as features (PR to `main`) — acceptable; no special branch needed.
+
+**What would change my mind:**
+- Multiple developers needing to batch features before release.
+- Customer-facing QA team requiring a stable staging URL (not per-PR previews).
+- Versioned releases with rollback requirements.

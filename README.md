@@ -1,5 +1,7 @@
 # MiniKraken
 
+[![CI](https://github.com/jdimodugno/mini-kraken/actions/workflows/ci.yml/badge.svg)](https://github.com/jdimodugno/mini-kraken/actions/workflows/ci.yml)
+
 A real-time cryptocurrency trading UI built for Senior Frontend Engineer interview preparation. Connects to Kraken's WebSocket v2 API for live order book and candlestick data, with a local order simulation engine.
 
 ## Features
@@ -82,7 +84,7 @@ src/
 
 ## Key Design Decisions
 
-See [`DECISIONS.md`](./DECISIONS.md) for 22 documented architectural decisions covering:
+See [`DECISIONS.md`](./DECISIONS.md) for 24 documented architectural decisions covering:
 
 - WebSocket connection lifecycle and resilience
 - Order book checksum verification and resync strategy
@@ -104,6 +106,28 @@ The following are intentionally mocked (real implementation would require API ke
 - 24h change/high/low/volume in `AssetInfoBar` — uses static values
 - Portfolio equity panel — placeholder pending account integration
 - Taker fee — hardcoded at 26 bps
+
+## CI/CD
+
+**Branching Strategy:** GitHub Flow
+- `main` is always deployable (production)
+- Feature branches (`feature/*`) branch from and merge to `main`
+- Every PR gets a Vercel preview deploy (staging)
+- Branch protection: PRs required, CI must pass
+
+**Git Hooks** via Husky:
+- **pre-commit**: Branch guard (blocks `main`) + lint-staged + typecheck
+- **pre-push**: Full test suite
+
+**Continuous Integration** via GitHub Actions:
+- Runs on every push to `main` and on pull requests
+- Pipeline: `pnpm install` → `typecheck` → `lint` → `test` → `build`
+- All checks must pass before merge
+
+**Deployment** via Vercel:
+- Auto-deploys `main` branch to production
+- Preview deploys generated for every PR
+- Zero-config Next.js deployment
 
 ## License
 
