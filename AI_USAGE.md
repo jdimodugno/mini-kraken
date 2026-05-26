@@ -371,3 +371,14 @@ Group entries under phase headings (`## Phase 2a — Order Book Data`). New phas
 - **What AI got wrong:** Agents encountered sandbox file write permission issues that prevented them from writing files directly — orchestrator had to apply all changes manually. This was a sandbox restriction, not an agent implementation error.
 - **Human correction:** All file changes were applied manually by the orchestrator due to sandbox restrictions. No changes to the proposed implementations were needed — all were accepted as designed by the agents.
 - **Files touched:** `e2e/smoke.spec.ts`, `src/hooks/use-debounced-value.ts`, `src/components/CurrentPrice.tsx`, `src/components/trading/PnlText.tsx`, `src/app/globals.css`, `src/lib/candles/use-candles.ts`, `vitest.config.ts`, `README.md`
+
+## Phase 6 — CI/CD & Deployment
+
+### 2026-05-26 — CI/CD pipeline and deployment setup
+
+- **Agent:** orchestrator (direct implementation)
+- **Task:** Set up complete CI/CD pipeline with GitHub Actions, Husky git hooks, branch protection, GitHub Flow branching strategy, and Vercel deployment.
+- **What AI got right:** Efficient direct implementation for config-only work. GitHub Actions workflow correctly structured with pnpm install → typecheck → lint → test → build pipeline, runs on push to main and PRs. Fixed pnpm version mismatch (local 10.13.1 vs CI default 9) by adding `packageManager: "pnpm@10.13.1"` field to package.json, ensuring version consistency across environments. Husky pre-commit hook correctly layers branch guard (blocks direct commits to main) + lint-staged (ESLint on staged .ts/.tsx files) + typecheck. Pre-push hook runs full test suite (99 tests). GitHub CLI (`gh`) enabled branch protection configuration without leaving terminal. DECISIONS.md entries #23 (GitHub Actions + Vercel choice with alternatives analysis) and #24 (GitHub Flow over Git Flow with rationale) captured architectural decisions. README updates comprehensive: CI badge, branching strategy section, git hooks documentation, CI/CD section. Lint fix in `use-market-preview.ts` extracted `size?.toString()` to variable for ESLint react-hooks dependency array compliance.
+- **What AI got wrong:** Initial CI workflow hardcoded pnpm v9. ESLint react-hooks plugin rejected complex expression `size?.toString()` in dependency array on first typecheck. Both caught and fixed during implementation.
+- **Human correction:** Accepted as-is. User separately made repo public (required for free-tier branch protection) and set up Vercel import for preview + production deploys.
+- **Files touched:** `.github/workflows/ci.yml` (new), `.husky/pre-commit` (new), `.husky/pre-push` (new), `package.json` (lint-staged config, packageManager field, husky prepare script), `DECISIONS.md` (entries #23, #24), `README.md` (badge, CI/CD section, branching strategy), `src/lib/trading/use-market-preview.ts` (lint fix)

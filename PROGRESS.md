@@ -196,3 +196,14 @@ Maintained by the `ai-usage-scribe` agent. Status values: `pending` | `in-progre
 | 5.12 | DECISIONS.md final (≥10 entries) | done | orchestrator | | 22 entries verified |
 | 5.13 | AI_USAGE.md final review | pending | | | |
 | 5.V | Verification checklist | pending | | | |
+
+## Phase 6 — CI/CD & Deployment
+
+| # | Step | Status | Agent | Commit | Notes |
+|---|---|---|---|---|---|
+| 6.1 | GitHub Actions CI workflow | done | orchestrator | | typecheck → lint → test → build; pnpm 10.13.1 pinned |
+| 6.2 | Husky + lint-staged + branch guard | done | orchestrator | | pre-commit (main guard + lint + typecheck), pre-push (tests) |
+| 6.3 | GitHub Flow branching strategy | done | orchestrator | | DECISIONS.md #24; no develop branch |
+| 6.4 | Branch protection on main | done | orchestrator | | repo made public; PRs required, CI must pass |
+| 6.5 | Vercel deployment | done | orchestrator | | preview deploys on PRs, auto-deploy main |
+| 6.V | Verification checklist | done | orchestrator | | CI green on PR #1; preview URL works |
